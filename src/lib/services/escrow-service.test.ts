@@ -140,6 +140,31 @@ describe("EscrowService — release", () => {
   });
 });
 
+describe("EscrowService — escrow is optional", () => {
+  it("creates a shipment with NO escrow when escrow is disabled, but still advances to intake", async () => {
+    const { shipment } = await ship.create(baseInput({ escrow: false }));
+    expect(shipment.status).toBe(ShipmentStatus.AWAITING_HUB_INTAKE);
+    expect(await repos.escrows.findByShipmentId(shipment.id)).toBeNull();
+    // markHeldIfPresent is a no-op (returns null) when there is no escrow.
+    expect(await escrow.markHeldIfPresent(shipment.id)).toBeNull();
+    // An explicit release is rejected — there is nothing to release.
+    await expect(
+      escrow.release({ shipmentId: shipment.id, expectedVersion: shipment.version, adminId: "a" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("respects the escrow.enabled config when no per-shipment override is given", async () => {
+    const off = makeInMemoryRepositories({
+      rules: [],
+      pricing: PRICING,
+      config: { "escrow.enabled": 0 },
+    });
+    const { shipment } = await new ShipmentService(off).create(baseInput());
+    expect(await off.escrows.findByShipmentId(shipment.id)).toBeNull();
+    expect(shipment.status).toBe(ShipmentStatus.AWAITING_HUB_INTAKE);
+  });
+});
+
 describe("EscrowService — refund", () => {
   it("refunds a PENDING hold and then blocks any release", async () => {
     const { shipment } = await ship.create(baseInput());

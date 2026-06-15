@@ -76,6 +76,9 @@ pan-African expansion.
 - **Manual hub escrow is a legitimate Phase 1 design, not a compromise.** The aggregator is the
   trusted third party that already plays this role informally. `EscrowRecord` supports both a
   Hub holder (manual) and a payment-provider holder (automated) without migration. OQ-1 open.
+  **Escrow is OPTIONAL per shipment** — it can't always be provided; a shipment without an
+  `EscrowRecord` still flows end-to-end (only the money-hold steps are skipped). Gate: create
+  input `escrow?` → AppConfig `escrow.enabled` (default on); custody uses `markHeldIfPresent`.
 - **Outbox pattern for notifications; idempotency keys on mutations; soft deletes + audit fields
   everywhere; UTC storage; webhook→Inngest async processing.** These prevent whole classes of
   bugs that destroy trust (lost SMS, duplicate shipments, concurrent transition corruption).

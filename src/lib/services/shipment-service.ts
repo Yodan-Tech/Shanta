@@ -27,7 +27,16 @@ export interface CreateShipmentInput {
   insuranceOptedIn: boolean;
   idempotencyKey?: string;
   items: CreateItemData[];
+  /**
+   * Whether to arm manual hub escrow for this shipment. Escrow is NOT guaranteed —
+   * sometimes it cannot be provided — so it is optional. When omitted, the
+   * `escrow.enabled` AppConfig decides (default: enabled).
+   */
+  escrow?: boolean;
 }
+
+/** AppConfig key gating whether escrow is armed by default. */
+export const ESCROW_ENABLED_KEY = "escrow.enabled";
 
 export interface TransitionInput {
   shipmentId: string;
@@ -138,11 +147,41 @@ export class ShipmentService {
       initialStatus: ShipmentStatus.RULES_VALIDATED,
     });
 
-    // 4) Arm the manual hub escrow (PENDING) and advance → AWAITING_HUB_INTAKE in
-    //    one transaction (OQ-1; closes the create→intake gap, Milestone 4).
-    const { shipment } = await this.escrow.armForShipment(created);
+    // 4) Advance to AWAITING_HUB_INTAKE. When escrow is available it is armed
+    //    (PENDING) atomically with the transition (OQ-1, Milestone 4). Escrow is
+    //    optional — when it can't be provided the shipment still moves; only the
+    //    money-hold steps are skipped.
+    const escrowEnabled = await this.isEscrowEnabled(input.escrow);
+    const shipment = escrowEnabled
+      ? (await this.escrow.armForShipment(created)).shipment
+      : await this.advanceToIntakeWithoutEscrow(created);
 
     return { shipment, price };
+  }
+
+  /** Resolve escrow availability: explicit override → AppConfig → default enabled. */
+  private async isEscrowEnabled(override?: boolean): Promise<boolean> {
+    if (override !== undefined) return override;
+    const flag = await this.repos.config.getNumber(ESCROW_ENABLED_KEY);
+    return flag === null ? true : flag !== 0;
+  }
+
+  /** No-escrow path: advance RULES_VALIDATED → AWAITING_HUB_INTAKE on its own. */
+  private async advanceToIntakeWithoutEscrow(
+    created: ShipmentWithItems,
+  ): Promise<ShipmentWithItems> {
+    assertTransition(created.status, ShipmentStatus.AWAITING_HUB_INTAKE, {});
+    const res = await this.repos.shipments.applyTransition({
+      shipmentId: created.id,
+      expectedVersion: created.version,
+      toStatus: ShipmentStatus.AWAITING_HUB_INTAKE,
+      actorType: AuditActorType.SYSTEM,
+      reason: "no escrow; advanced to hub intake",
+    });
+    if (!res.ok) {
+      throw ApiError.conflict("Shipment was modified concurrently; reload and retry.");
+    }
+    return res.shipment;
   }
 
   async getForSender(

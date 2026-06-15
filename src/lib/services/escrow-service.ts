@@ -74,6 +74,20 @@ export class EscrowService {
   }
 
   /**
+   * Mark HELD on custody transfer ONLY if this shipment has an escrow — escrow is
+   * optional (it can't always be provided), so a shipment without one simply has no
+   * money-hold step. Returns null when there is no escrow.
+   */
+  async markHeldIfPresent(
+    shipmentId: string,
+    actorId?: string,
+  ): Promise<EscrowRecord | null> {
+    const escrow = await this.repos.escrows.findByShipmentId(shipmentId);
+    if (!escrow) return null;
+    return this.markHeld(shipmentId, actorId);
+  }
+
+  /**
    * Admin release. Allowed ONLY when the shipment is DELIVERY_CONFIRMED (so never on
    * a DISPUTED shipment) and the escrow is HELD. Pairs RELEASED with the shipment's
    * DELIVERY_CONFIRMED → ESCROW_RELEASED transition atomically.
