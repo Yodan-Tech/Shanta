@@ -43,6 +43,29 @@ export const adminTransitionSchema = z.object({
 });
 export type AdminTransitionBody = z.infer<typeof adminTransitionSchema>;
 
+/** Hub intake payload (sent as a JSON form field alongside the photo files). */
+export const intakePayloadSchema = z.object({
+  itemWeights: z
+    .array(
+      z.object({
+        itemId: z.string().uuid(),
+        actualWeightKg: z.number().positive().max(100),
+      }),
+    )
+    .min(1)
+    .max(20),
+  cashChecked: z.boolean(),
+  geoLat: z.number().min(-90).max(90).optional(),
+  geoLng: z.number().min(-180).max(180).optional(),
+});
+export type IntakePayload = z.infer<typeof intakePayloadSchema>;
+
+/** Seal payload — the tamper-seal id (applied only after verification). */
+export const sealPayloadSchema = z.object({
+  sealId: z.string().min(1).max(64),
+});
+export type SealPayload = z.infer<typeof sealPayloadSchema>;
+
 /** Admin escrow release — optimistic lock on the shipment (FINANCE/SUPER_ADMIN). */
 export const escrowReleaseSchema = z.object({
   expectedVersion: z.number().int().nonnegative(),

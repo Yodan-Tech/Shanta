@@ -9,6 +9,7 @@ import {
   type TripLeg,
   type AuditActorType,
   type EscrowRecord,
+  type HandoffRecord,
 } from "@prisma/client";
 import type { RuleInput, PricingRule } from "@/lib/domain/types";
 import type { TravelerCandidate } from "@/lib/domain/matching";
@@ -18,6 +19,8 @@ import type {
   RuleRepository,
   PricingRepository,
   EscrowRepository,
+  HandoffRepository,
+  ConfigRepository,
   Repositories,
   CreateShipmentData,
   CreateTripData,
@@ -29,6 +32,9 @@ import type {
   ArmEscrowResult,
   ApplyEscrowChangeInput,
   ApplyEscrowChangeResult,
+  RecordHandoffInput,
+  RecordHandoffResult,
+  RestrictionCheckData,
 } from "./ports";
 
 /**
@@ -265,6 +271,90 @@ export class InMemoryEscrowRepository implements EscrowRepository {
   }
 }
 
+/**
+ * Handoff fake. Shares the shipment store so "create handoff (+ item updates +
+ * restriction check) + transition shipment" is one in-memory unit, mirroring the
+ * Prisma adapter's $transaction.
+ */
+export class InMemoryHandoffRepository implements HandoffRepository {
+  readonly handoffs: HandoffRecord[] = [];
+  readonly restrictionChecks: (RestrictionCheckData & { shipmentId: string })[] = [];
+
+  constructor(private readonly shipmentsRepo: InMemoryShipmentRepository) {}
+
+  async record(input: RecordHandoffInput): Promise<RecordHandoffResult> {
+    const shipment = this.shipmentsRepo.shipments.get(input.shipmentId);
+    if (!shipment) return { ok: false, reason: "NOT_FOUND" };
+    if (shipment.version !== input.expectedVersion) {
+      return { ok: false, reason: "VERSION_CONFLICT" };
+    }
+
+    const now = new Date();
+    const handoff: HandoffRecord = {
+      id: uuid(),
+      shipmentId: input.shipmentId,
+      shipmentLegId: input.shipmentLegId ?? null,
+      handoffType: input.handoffType,
+      fromActorId: input.fromActorId,
+      toActorId: input.toActorId,
+      photoUrls: input.photoUrls,
+      videoUrl: input.videoUrl ?? null,
+      captureMethod: input.captureMethod,
+      acknowledgmentText: input.acknowledgmentText ?? null,
+      acknowledged: input.acknowledged ?? false,
+      sealApplied: input.sealApplied ?? false,
+      sealId: input.sealId ?? null,
+      sealIntact: input.sealIntact ?? null,
+      geoLat: input.geoLat != null ? D(input.geoLat) : null,
+      geoLng: input.geoLng != null ? D(input.geoLng) : null,
+      capturedAt: input.capturedAt,
+      createdAt: now,
+    };
+
+    // Item side effects (mutate in place so the post-transition shipment reflects them).
+    if (input.itemActualWeights) {
+      for (const w of input.itemActualWeights) {
+        const item = shipment.items.find((i) => i.id === w.itemId);
+        if (item) item.actualWeightKg = D(w.actualWeightKg);
+      }
+    }
+    if (input.itemSealId) {
+      for (const item of shipment.items) item.sealId = input.itemSealId;
+    }
+    if (input.restrictionCheck) {
+      this.restrictionChecks.push({
+        shipmentId: input.shipmentId,
+        ...input.restrictionCheck,
+      });
+    }
+
+    const res = await this.shipmentsRepo.applyTransition({
+      shipmentId: input.shipmentId,
+      expectedVersion: input.expectedVersion,
+      toStatus: input.toStatus,
+      actorType: input.actorType,
+      ...(input.actorId ? { actorId: input.actorId } : {}),
+      ...(input.reason ? { reason: input.reason } : {}),
+      handoffRecordId: handoff.id,
+    });
+    if (!res.ok) return res;
+
+    this.handoffs.push(handoff);
+    return { ok: true, handoff, shipment: res.shipment };
+  }
+
+  async listByShipment(shipmentId: string): Promise<HandoffRecord[]> {
+    return this.handoffs.filter((h) => h.shipmentId === shipmentId);
+  }
+}
+
+export class InMemoryConfigRepository implements ConfigRepository {
+  constructor(private readonly values: Record<string, number> = {}) {}
+  async getNumber(key: string): Promise<number | null> {
+    return key in this.values ? this.values[key]! : null;
+  }
+}
+
 export class InMemoryTripRepository implements TripRepository {
   readonly trips = new Map<string, TripWithLegs>();
   /** Candidates returned by searchCandidates — set by tests. */
@@ -333,10 +423,13 @@ export class InMemoryPricingRepository implements PricingRepository {
 export function makeInMemoryRepositories(opts?: {
   rules?: RuleInput[];
   pricing?: PricingRule | null;
+  config?: Record<string, number>;
 }): Repositories & {
   shipments: InMemoryShipmentRepository;
   trips: InMemoryTripRepository;
   escrows: InMemoryEscrowRepository;
+  handoffs: InMemoryHandoffRepository;
+  config: InMemoryConfigRepository;
 } {
   const shipments = new InMemoryShipmentRepository();
   return {
@@ -345,5 +438,7 @@ export function makeInMemoryRepositories(opts?: {
     rules: new InMemoryRuleRepository(opts?.rules ?? []),
     pricing: new InMemoryPricingRepository(opts?.pricing ?? null),
     escrows: new InMemoryEscrowRepository(shipments),
+    handoffs: new InMemoryHandoffRepository(shipments),
+    config: new InMemoryConfigRepository(opts?.config ?? {}),
   };
 }
