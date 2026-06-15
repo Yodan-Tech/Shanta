@@ -103,6 +103,29 @@ stamps the seal id on every item and advances `CONTENTS_VERIFIED → SEALED → 
 → `200 { "data": { "handoff": { "sealApplied": true, "sealId" }, "shipment": { "status": "AWAITING_MATCH" } } }`
 Errors: `422` (no seal id / no photo); `409 CONFLICT` (sealing before verification — illegal transition).
 
+### Matching assignment + traveler accept/reject (Constraints 2.1 + 2.2)
+JSON endpoints. Frequency is used only internally for ranking and is **never returned** to a client.
+
+#### `POST /api/v1/shipments/:id/match` · role: AGGREGATOR
+Body `{ "tripLegId" }`. Re-checks **server-side**: leg/trip ACTIVE, traveler ACTIVE + KYC VERIFIED,
+capacity ≥ shipment weight, and per-category **crowding** cap. Creates the `ShipmentLeg`, decrements
+`TripLeg.availableCapacityKg`, → `MATCHED_TO_TRAVELER` (one transaction).
+→ `200 { "data": { "shipment": { "status": "MATCHED_TO_TRAVELER" } } }`
+Errors: `422 UNPROCESSABLE` (capacity / crowding / inactive / unverified); `409 CONFLICT` (version).
+
+#### `POST /api/v1/shipments/:id/review` · role: TRAVELER
+No body. Records a `HUB_TO_TRAVELER` handoff of the sealed-parcel evidence; → `TRAVELER_REVIEWED`.
+
+#### `POST /api/v1/shipments/:id/accept` · role: TRAVELER
+Body `{ "acknowledgmentText", "sealIntact" }`. Records the **verbatim acknowledgment** + intact-seal
+check; → `TRAVELER_ACCEPTED → WITH_TRAVELER`, and marks escrow `HELD` **if one exists** (escrow is
+optional). → `200 { "data": { "shipment": { "status": "WITH_TRAVELER" }, "escrowHeld": bool } }`
+Errors: `400 BAD_REQUEST` (no acknowledgment); `422` (seal not intact / illegal state).
+
+#### `POST /api/v1/shipments/:id/reject` · role: TRAVELER
+Body `{ "reason"? }` (a **normal** outcome). Restores `TripLeg` capacity, cancels the `ShipmentLeg`,
+re-queues → `AWAITING_MATCH`. → `200 { "data": { "shipment": { "status": "AWAITING_MATCH" } } }`
+
 ### `POST /api/v1/admin/escrow/:id/release` — release the hub escrow · ADMIN (FINANCE/SUPER_ADMIN)
 `:id` is the **shipment id** (escrow is 1—1 with a shipment). Releases the held logistics fee
 **only when the escrow is `HELD` and the shipment is `DELIVERY_CONFIRMED`** (never on a `DISPUTED`
@@ -151,8 +174,9 @@ Lets the UI render categories, caps, frequency-sensitive limits, and prohibition
 
 ## Not yet implemented (next backend slices)
 
-Matching assignment + traveler accept/reject with the escrow `markHeld` on custody transfer
-(Milestone 6); delivery + receiver SMS confirmation (Milestone 7); notifications outbox
-(Milestone 8); KYC submission/review (Milestone 9). The state machine, rules engine, pricing,
-matching, **manual hub escrow** (arm/release/refund), and the **hub verification chain**
-(intake → verify → seal, private Storage + magic-byte validation + signed URLs) are built and tested.
+Delivery + receiver SMS confirmation (Milestone 7); notifications outbox (Milestone 8); KYC
+submission/review (Milestone 9); admin operations panel (Milestone 10). Built and tested: the state
+machine, rules engine, pricing, query matching, **manual hub escrow** (optional; arm/release/refund),
+the **hub verification chain** (intake → verify → seal, private Storage + magic-byte validation +
+signed URLs), and **matching assignment + traveler accept/reject** (capacity/crowding re-check,
+acknowledgment + intact-seal, escrow HELD on custody).

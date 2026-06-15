@@ -14,6 +14,8 @@ import type {
   RestrictionCheckTrigger,
   RestrictionCheckResult,
   CustomsFrequencyTier,
+  TripLegStatus,
+  TripStatus,
 } from "@prisma/client";
 import type { RuleInput, PricingRule } from "@/lib/domain/types";
 import type { TravelerCandidate } from "@/lib/domain/matching";
@@ -258,6 +260,62 @@ export interface ConfigRepository {
   getNumber(key: string): Promise<number | null>;
 }
 
+// ── Matching assignment + traveler accept/reject (Constraints 2.1 + 2.2) ───────
+
+/** Server-side snapshot of a trip leg for the match re-check (never sent to clients). */
+export interface TripLegMatchInfo {
+  tripLegId: string;
+  travelerId: string;
+  departAt: Date;
+  availableCapacityKg: number;
+  legStatus: TripLegStatus;
+  tripStatus: TripStatus;
+  travelerActive: boolean;
+  travelerKycVerified: boolean;
+  tripCountLast90Days: number;
+  /** Weight already accepted on this leg in the given category (crowding, 2.1). */
+  categoryWeightAcceptedKg: number;
+}
+
+/** Assign a traveler: create the ShipmentLeg, decrement capacity, and transition. Atomic. */
+export interface AssignTravelerInput {
+  shipmentId: string;
+  tripLegId: string;
+  travelerId: string;
+  weightKg: number;
+  expectedVersion: number;
+  toStatus: ShipmentStatus;
+  actorId?: string;
+}
+
+export type AssignTravelerResult =
+  | { ok: true; shipment: ShipmentWithItems }
+  | { ok: false; reason: "VERSION_CONFLICT" | "NOT_FOUND" | "CAPACITY" | "LEG_INACTIVE" };
+
+/** Release a match (reject): restore capacity, cancel the ShipmentLeg, and transition. Atomic. */
+export interface ReleaseMatchInput {
+  shipmentId: string;
+  weightKg: number;
+  expectedVersion: number;
+  toStatus: ShipmentStatus;
+  actorType: AuditActorType;
+  actorId?: string;
+  reason?: string;
+}
+
+export type ReleaseMatchResult =
+  | { ok: true; shipment: ShipmentWithItems }
+  | { ok: false; reason: "VERSION_CONFLICT" | "NOT_FOUND" };
+
+export interface MatchRepository {
+  getTripLegMatchInfo(
+    tripLegId: string,
+    itemCategory: string,
+  ): Promise<TripLegMatchInfo | null>;
+  assignTraveler(input: AssignTravelerInput): Promise<AssignTravelerResult>;
+  releaseMatch(input: ReleaseMatchInput): Promise<ReleaseMatchResult>;
+}
+
 /** Aggregate of all repositories, injected into services. */
 export interface Repositories {
   shipments: ShipmentRepository;
@@ -267,4 +325,5 @@ export interface Repositories {
   escrows: EscrowRepository;
   handoffs: HandoffRepository;
   config: ConfigRepository;
+  match: MatchRepository;
 }

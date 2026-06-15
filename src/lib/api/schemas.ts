@@ -43,6 +43,21 @@ export const adminTransitionSchema = z.object({
 });
 export type AdminTransitionBody = z.infer<typeof adminTransitionSchema>;
 
+/** Aggregator assigns a trip leg to a shipment (Constraint 2.1 ranking applied upstream). */
+export const matchSchema = z.object({ tripLegId: z.string().uuid() });
+export type MatchBody = z.infer<typeof matchSchema>;
+
+/** Traveler accepts custody: verbatim acknowledgment + intact-seal confirmation (2.2). */
+export const acceptSchema = z.object({
+  acknowledgmentText: z.string().min(1).max(500),
+  sealIntact: z.boolean(),
+});
+export type AcceptBody = z.infer<typeof acceptSchema>;
+
+/** Traveler rejects (a normal outcome). */
+export const rejectSchema = z.object({ reason: z.string().max(500).optional() });
+export type RejectBody = z.infer<typeof rejectSchema>;
+
 /** Hub intake payload (sent as a JSON form field alongside the photo files). */
 export const intakePayloadSchema = z.object({
   itemWeights: z
