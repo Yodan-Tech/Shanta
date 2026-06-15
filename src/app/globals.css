@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+/*
+ * Shanta brand theme — tokens sampled from the logo (docs/DESIGN_SYSTEM.md).
+ * Navy #11234A (primary) + Amber #F5BD2E (accent) on generous white.
+ * Tailwind v4: tokens declared in @theme become utilities (bg-navy, text-amber, ...).
+ */
+@theme {
+  /* Brand scales */
+  --color-navy: #11234a;
+  --color-navy-900: #0b1730;
+  --color-navy-700: #11234a;
+  --color-navy-500: #2a4475;
+  --color-navy-300: #8a9bbe;
+
+  --color-amber: #f5bd2e;
+  --color-amber-600: #d99e12;
+  --color-amber-500: #f5bd2e;
+  --color-amber-300: #fbe0a0;
+
+  /* Neutrals */
+  --color-background: #ffffff;
+  --color-foreground: #0f172a;
+  --color-surface: #f6f8fb;
+  --color-border: #e2e8f0;
+  --color-muted: #64748b;
+
+  /* Semantic */
+  --color-primary: #11234a;
+  --color-primary-foreground: #ffffff;
+  --color-accent: #f5bd2e;
+  --color-accent-foreground: #11234a;
+  --color-success: #1e9e6a;
+  --color-warning: #f5bd2e;
+  --color-danger: #d64545;
+  --color-ring: #11234a;
+
+  /* Fonts (CSS variables set in layout.tsx via next/font) */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-ethiopic: var(--font-ethiopic), var(--font-inter), sans-serif;
+
+  --radius: 0.625rem;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  font-family:
+    var(--font-inter), var(--font-ethiopic), ui-sans-serif, system-ui, sans-serif;
+}

@@ -1,0 +1,62 @@
+{
+  "brand": {
+    "name": "Shanta",
+    "tagline": "Carry More Than Luggage",
+    "promise": "Send what matters through people you can trust."
+  },
+  "common": {
+    "continue": "Continue",
+    "back": "Back",
+    "loading": "Loading…",
+    "signOut": "Sign out",
+    "language": "Language",
+    "english": "English",
+    "amharic": "አማርኛ"
+  },
+  "landing": {
+    "headline": "Send what matters through people you can trust",
+    "subhead": "Shanta connects senders with trusted travelers who have spare luggage space — with verified handoffs and escrow built in.",
+    "getStarted": "Get started",
+    "signIn": "Sign in"
+  },
+  "auth": {
+    "phoneTitle": "Sign in to Shanta",
+    "phoneSubtitle": "Enter your phone number and we'll send you a verification code.",
+    "phoneLabel": "Phone number",
+    "phonePlaceholder": "+2519XXXXXXXX",
+    "sendCode": "Send code",
+    "otpTitle": "Enter your code",
+    "otpSubtitle": "We sent a 6-digit code to {phone}.",
+    "otpLabel": "Verification code",
+    "verify": "Verify",
+    "resend": "Resend code",
+    "changeNumber": "Change number",
+    "errorInvalidPhone": "Please enter a valid phone number in international format.",
+    "errorInvalidCode": "That code is incorrect or has expired. Please try again.",
+    "errorRateLimited": "Too many attempts. Please wait a while before trying again."
+  },
+  "onboarding": {
+    "title": "How will you use Shanta?",
+    "subtitle": "You can do more than one — and change this later.",
+    "sender": "Send items",
+    "senderDesc": "I have something to send to another city.",
+    "traveler": "Carry items",
+    "travelerDesc": "I'm travelling and have spare luggage space.",
+    "aggregator": "Run a hub",
+    "aggregatorDesc": "I operate a drop-off / consolidation point.",
+    "save": "Save and continue"
+  },
+  "dashboard": {
+    "welcome": "Welcome to Shanta",
+    "sender": "Sender dashboard",
+    "traveler": "Traveler dashboard",
+    "aggregator": "Hub dashboard",
+    "comingSoon": "Your tools will appear here as we build out Phase 1.",
+    "yourRoles": "Your roles"
+  },
+  "admin": {
+    "title": "Shanta Admin",
+    "restricted": "Restricted area",
+    "noAccess": "You don't have access to the admin area."
+  }
+}

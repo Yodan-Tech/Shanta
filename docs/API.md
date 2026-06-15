@@ -1,0 +1,130 @@
+# SHANTA — API Reference (v1)
+
+> The HTTP contract the web UI binds to. Built as Next.js Route Handlers under
+> `src/app/api/v1/`, backed by the services in `src/lib/services/` and the pure domain
+> core in `src/lib/domain/`. This doc is the source for the UI-generation prompt
+> ([prompts/UI_GENERATION_PROMPT.md](../prompts/UI_GENERATION_PROMPT.md)).
+
+## Conventions
+
+- **Base path:** `/api/v1`.
+- **Auth:** Supabase Auth session via cookies (`@supabase/ssr`). The web UI is the same
+  Next.js app, so the session cookie flows automatically — no bearer header needed. Each
+  route resolves the current `profile` (created on first sign-in) and checks role.
+- **Envelope:**
+  - Success → `{ "data": <payload> }`
+  - Error → `{ "error": { "code", "message", "correlation_id", "details"? } }`
+- **Error codes → HTTP status:** `BAD_REQUEST` 400 · `UNAUTHORIZED` 401 · `FORBIDDEN` 403 ·
+  `NOT_FOUND` 404 · `CONFLICT` 409 · `VALIDATION_FAILED`/`UNPROCESSABLE`/`RULES_FAILED` 422 ·
+  `INTERNAL` 500.
+- **Money:** ETB, two decimals. **Timestamps:** ISO-8601 UTC. **IDs:** UUID.
+- **Idempotency:** `POST /shipments` accepts an `Idempotency-Key` header (or body field);
+  a repeat returns the original shipment.
+- **Concurrency:** state transitions require `expectedVersion`; a mismatch → `409 CONFLICT`
+  (reload and retry).
+
+## Roles
+
+A user (`profile`) holds a set of roles: `SENDER`, `TRAVELER`, `AGGREGATOR`, `RECEIVER`.
+Admin endpoints require a separate `admin_users` record with an `AdminRole`
+(`SUPER_ADMIN`, `OPERATIONS`, `KYC_REVIEWER`, `FINANCE`); `SUPER_ADMIN` satisfies any
+role-gated admin endpoint. Receivers are SMS-first and don't need the app.
+
+---
+
+## Endpoints
+
+### `GET /api/v1/health` — liveness (no auth)
+→ `200 { "status": "ok"|"degraded", "timestamp", "checks": { "database": "ok"|"error" } }`
+(`503` when degraded.)
+
+### `POST /api/v1/shipments` — create a shipment · role: SENDER
+Runs the rules engine (Constraint 2.4) and computes price, then **arms a manual hub escrow**
+(`EscrowRecord` PENDING for the quoted total, `holderType: HUB`) and advances the shipment
+`RULES_VALIDATED → AWAITING_HUB_INTAKE` **in one transaction** (OQ-1). The returned shipment is
+therefore in `AWAITING_HUB_INTAKE` at `version: 1`.
+Headers: `Idempotency-Key: <uuid>` (recommended).
+Request:
+```json
+{
+  "receiverName": "Almaz",
+  "receiverPhone": "+251911223344",
+  "originRegion": "Addis Ababa",
+  "destinationRegion": "Hawassa",
+  "insuranceOptedIn": false,
+  "items": [
+    { "category": "CLOTHING", "description": "shirts", "declaredWeightKg": 3, "declaredValueEtb": 2000 }
+  ]
+}
+```
+→ `201 { "data": { "shipment": { "id", "status": "AWAITING_HUB_INTAKE", "version": 1, "items": [...], "totalPriceEtb", ... }, "price": { "carrierFeeEtb", "aggregatorFeeEtb", "platformFeeEtb", "insurancePremiumEtb", "taxAmountEtb", "totalPriceEtb", "currency" } } }`
+Errors: `422 RULES_FAILED` (a prohibited/over-limit item — `details.items` lists failures);
+`422 UNPROCESSABLE` (no corridor pricing); `422 VALIDATION_FAILED`.
+
+### `GET /api/v1/shipments` — list my shipments · role: SENDER
+→ `200 { "data": [ { "id", "status", "originRegion", "destinationRegion", "totalPriceEtb", "createdAt" }, ... ] }`
+
+### `GET /api/v1/shipments/:id` — get one of my shipments · role: SENDER
+→ `200 { "data": { ...shipment, "items": [...] } }` · `404 NOT_FOUND` if not owned.
+
+### `POST /api/v1/shipments/:id/transition` — manual state transition · ADMIN
+For RUNBOOK/manual operations. Safety-critical user transitions get dedicated endpoints later.
+Request:
+```json
+{ "toStatus": "AWAITING_HUB_INTAKE", "expectedVersion": 0, "reason": "manual advance", "context": { "adminReviewed": true } }
+```
+→ `200 { "data": { ...shipment } }` · `409 CONFLICT` (version) · `409`/`422` (illegal/guarded transition).
+
+### `POST /api/v1/admin/escrow/:id/release` — release the hub escrow · ADMIN (FINANCE/SUPER_ADMIN)
+`:id` is the **shipment id** (escrow is 1—1 with a shipment). Releases the held logistics fee
+**only when the escrow is `HELD` and the shipment is `DELIVERY_CONFIRMED`** (never on a `DISPUTED`
+shipment — manual escrow never auto-releases, OQ-1 / Constraint 2.5). Atomically sets the escrow
+`RELEASED` and transitions the shipment `DELIVERY_CONFIRMED → ESCROW_RELEASED`.
+Request: `{ "expectedVersion": 14 }`
+→ `200 { "data": { "escrow": { "status": "RELEASED", "releasedBy", "releasedAt", ... }, "shipment": { "status": "ESCROW_RELEASED", ... } } }`
+Errors: `422 UNPROCESSABLE` (escrow not HELD, or shipment not DELIVERY_CONFIRMED); `409 CONFLICT`
+(version mismatch); `403 FORBIDDEN` (not FINANCE/SUPER_ADMIN); `404 NOT_FOUND`.
+
+### `POST /api/v1/admin/escrow/:id/refund` — refund a non-settled hub escrow · ADMIN (FINANCE/SUPER_ADMIN)
+`:id` is the **shipment id**. Refunds a `PENDING`/`HELD` hold (sender cancellation, return, or a
+dispute resolved for the sender); the admin then routes the shipment to `CANCELLED` /
+`RETURNED_TO_SENDER` via the transition endpoint.
+Request: `{ "reason": "sender cancelled before intake" }` (reason optional)
+→ `200 { "data": { "escrow": { "status": "REFUNDED", "refundedAt", ... } } }`
+Errors: `422 UNPROCESSABLE` (escrow already settled); `403 FORBIDDEN`; `404 NOT_FOUND`.
+
+### `POST /api/v1/trips` — publish a trip · role: TRAVELER
+Request:
+```json
+{
+  "mode": "ROAD",
+  "legs": [
+    { "sequence": 1, "originRegion": "Addis Ababa", "destinationRegion": "Hawassa",
+      "departAt": "2026-07-01T06:00:00Z", "totalCapacityKg": 8 }
+  ]
+}
+```
+→ `201 { "data": { "id", "status", "legs": [ { "id", "availableCapacityKg", ... } ] } }`
+
+### `GET /api/v1/trips` — list my trips · role: TRAVELER
+→ `200 { "data": [ { "id", "status", "legs": [...] }, ... ] }`
+
+### `GET /api/v1/matching` — find travelers for an item · role: AGGREGATOR
+Query: `originRegion, destinationRegion, windowStart, windowEnd, itemCategory, itemWeightKg`.
+Returns eligible travelers ranked by Constraint 2.1 (lowest 90-day frequency first), with the
+crowding constraint applied.
+→ `200 { "data": [ { "tripLegId", "travelerId", "departAt", "availableCapacityKg", "tripCountLast90Days", "categoryWeightAcceptedKg" }, ... ] }`
+
+### `GET /api/v1/rules` — active item-restriction rules · any authenticated user
+Lets the UI render categories, caps, frequency-sensitive limits, and prohibitions.
+→ `200 { "data": [ { "itemCategory", "maxWeightKg", "frequencySensitive", "maxWeightKgFrequent", "prohibited", "requiresDeclaration", "requiresSpecialPermit", "direction" }, ... ] }`
+
+---
+
+## Not yet implemented (next backend slices, before/after Supabase wiring)
+
+Dedicated hub-operation endpoints (intake → verify → seal) that derive guard context
+server-side from handoff records, including the escrow `markHeld` on custody transfer
+(Milestone 5–6); handoff/photo upload (Supabase Storage signed URLs); receiver SMS delivery
+confirmation; notifications outbox; KYC submission/review. The state machine, rules engine,
+pricing, matching, and **manual hub escrow** (create→arm, release, refund) are built and tested.

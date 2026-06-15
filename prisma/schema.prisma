@@ -1,0 +1,685 @@
+// Shanta — Prisma schema (Phase 1)
+// Source of truth: docs/DATA_MODEL.md, adapted for Supabase Auth + Storage.
+// - Identity (phone, OTP, sessions) is owned by Supabase Auth (`auth.users`).
+//   `Profile` and `AdminUser` are keyed by the Supabase auth user id (uuid).
+// - Custom OTPRequest / RefreshToken entities are intentionally dropped (Supabase
+//   Auth handles them). See docs/OPEN_QUESTIONS.md + the Phase-1 ADR in docs/TRD.md.
+// - Business logic runs server-side (Next.js route handlers / server actions) via
+//   this client using the pooled DATABASE_URL; RLS is defense-in-depth.
+// - `created_by` / admin-actor columns are stored as uuid soft-references (no Prisma
+//   relation) to keep the admin/audit graph simple in Phase 1.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled (pgbouncer) — app runtime
+  directUrl = env("DIRECT_URL") // direct (5432) — migrations / introspection
+}
+
+// ─────────────────────────── Enums ───────────────────────────
+
+enum Role {
+  SENDER
+  TRAVELER
+  AGGREGATOR
+  RECEIVER
+}
+
+enum TravelerTier {
+  CASUAL
+  PROFESSIONAL
+}
+
+enum KycStatus {
+  UNVERIFIED
+  PENDING_REVIEW
+  VERIFIED
+  REJECTED
+}
+
+enum KycMethod {
+  MANUAL
+  FAYDA
+}
+
+enum Language {
+  EN
+  AM
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum CustomsFrequencyTier {
+  NON_FREQUENT
+  FREQUENT
+}
+
+enum TripStatus {
+  DRAFT
+  ACTIVE
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TripMode {
+  FLIGHT
+  ROAD
+  BUS
+  OTHER
+}
+
+enum TripLegStatus {
+  ACTIVE
+  FULL
+  CANCELLED
+  COMPLETED
+}
+
+enum HubType {
+  ORIGIN
+  TRANSIT
+  DESTINATION
+}
+
+enum HubStatus {
+  PENDING_APPROVAL
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+// Full shipment lifecycle — docs/STATE_MACHINE.md (Phase 2 states included by design).
+enum ShipmentStatus {
+  DRAFT
+  SUBMITTED
+  RULES_VALIDATED
+  AWAITING_HUB_INTAKE
+  AT_ORIGIN_HUB
+  WEIGHT_DISCREPANCY
+  CONTENTS_VERIFIED
+  SEALED
+  AWAITING_MATCH
+  MATCHED_TO_TRAVELER
+  TRAVELER_REVIEWED
+  TRAVELER_ACCEPTED
+  TRAVELER_REJECTED
+  WITH_TRAVELER
+  IN_TRANSIT
+  CUSTOMS_CLEARANCE
+  AT_TRANSIT_HUB
+  AT_DESTINATION_HUB
+  OUT_FOR_DELIVERY
+  DELIVERY_ATTEMPTED
+  DELIVERED
+  DELIVERY_CONFIRMED
+  ESCROW_RELEASED
+  COMPLETED
+  CUSTOMS_FLAGGED
+  DISPUTED
+  ON_HOLD
+  DELIVERY_FAILED
+  RETURNED_TO_SENDER
+  CANCELLED
+}
+
+enum ShipmentLegStatus {
+  PLANNED
+  MATCHED
+  IN_TRANSIT
+  COMPLETED
+  CANCELLED
+  RETURNED
+}
+
+enum HandoffType {
+  SENDER_TO_HUB
+  HUB_TO_TRAVELER
+  TRAVELER_TO_HUB
+  HUB_TO_RECEIVER
+  TRAVELER_TO_RECEIVER
+}
+
+enum CaptureMethod {
+  LIVE
+  GALLERY
+}
+
+enum RestrictionDirection {
+  ENTRY
+  EXIT
+  BOTH
+}
+
+enum RestrictionCheckTrigger {
+  SUBMISSION
+  HUB_INTAKE
+  RE_MATCH
+}
+
+enum RestrictionCheckResult {
+  PASS
+  FAIL
+  NEEDS_PERMIT
+  NEEDS_DECLARATION
+}
+
+enum EscrowHolderType {
+  HUB
+  PAYMENT_PROVIDER
+}
+
+enum EscrowStatus {
+  PENDING
+  HELD
+  RELEASE_REQUESTED
+  RELEASED
+  REFUNDED
+  DISPUTED
+}
+
+enum NotificationChannel {
+  SMS
+  PUSH
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+  RETRYING
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  OPERATIONS
+  KYC_REVIEWER
+  FINANCE
+}
+
+enum AuditActorType {
+  USER
+  ADMIN
+  SYSTEM
+}
+
+enum WebhookProvider {
+  AFRICA_TALKING
+  TELE_BIRR
+  INNGEST
+}
+
+// ─────────────────────────── Identity ───────────────────────────
+
+/// Domain profile for an end user. `id` == Supabase `auth.users.id`.
+model Profile {
+  id                String        @id @db.Uuid
+  phone             String?       @unique // mirrored from auth.users for convenience
+  fullName          String?
+  roles             Role[]        @default([RECEIVER])
+  travelerTier      TravelerTier?
+  kycStatus         KycStatus     @default(UNVERIFIED)
+  kycMethod         KycMethod?
+  kycSubmittedAt    DateTime?
+  kycReviewedAt     DateTime?
+  kycReviewedBy     String?       @db.Uuid // AdminUser id (soft ref)
+  idDocumentUrl     String? // Supabase Storage (private bucket); signed URLs only
+  preferredLanguage Language      @default(AM)
+  countryCode       String        @default("ET")
+  status            AccountStatus @default(ACTIVE)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deletedAt         DateTime?
+
+  travelProfile     TravelProfile?
+  trips             Trip[]
+  operatedHubs      Hub[]
+  sentShipments     Shipment[]      @relation("ShipmentSender")
+  receivedShipments Shipment[]      @relation("ShipmentReceiver")
+  carriedLegs       ShipmentLeg[]   @relation("ShipmentLegTraveler")
+  handoffsFrom      HandoffRecord[] @relation("HandoffFrom")
+  handoffsTo        HandoffRecord[] @relation("HandoffTo")
+  notifications     Notification[]
+
+  @@index([countryCode, status])
+  @@index([kycStatus])
+  @@map("profiles")
+}
+
+/// Per-traveler frequency / risk tracking — Constraint 2.1 (first-class).
+model TravelProfile {
+  id                   String               @id @default(uuid()) @db.Uuid
+  userId               String               @unique @db.Uuid
+  user                 Profile              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tripCountLast30Days  Int                  @default(0)
+  tripCountLast90Days  Int                  @default(0)
+  tripCountLifetime    Int                  @default(0)
+  lastTripAt           DateTime?
+  customsFrequencyTier CustomsFrequencyTier @default(NON_FREQUENT)
+  riskFlags            Json?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@index([tripCountLast90Days])
+  @@index([customsFrequencyTier])
+  @@map("travel_profiles")
+}
+
+/// Shanta staff. `id` == Supabase `auth.users.id`. 2FA/IP controls at Supabase/Vercel layer.
+model AdminUser {
+  id          String    @id @db.Uuid
+  email       String    @unique
+  role        AdminRole
+  active      Boolean   @default(true)
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@map("admin_users")
+}
+
+// ─────────────────────────── Supply (Trips) ───────────────────────────
+
+model Trip {
+  id          String     @id @default(uuid()) @db.Uuid
+  travelerId  String     @db.Uuid
+  traveler    Profile    @relation(fields: [travelerId], references: [id])
+  status      TripStatus @default(DRAFT)
+  mode        TripMode
+  countryCode String     @default("ET")
+  version     Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  createdBy   String?    @db.Uuid
+  deletedAt   DateTime?
+
+  legs TripLeg[]
+
+  @@index([travelerId])
+  @@index([status])
+  @@map("trips")
+}
+
+model TripLeg {
+  id                  String        @id @default(uuid()) @db.Uuid
+  tripId              String        @db.Uuid
+  trip                Trip          @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  sequence            Int
+  originRegion        String
+  destinationRegion   String
+  originHubId         String?       @db.Uuid // soft ref → Hub
+  destinationHubId    String?       @db.Uuid // soft ref → Hub
+  departAt            DateTime
+  arriveAt            DateTime?
+  totalCapacityKg     Decimal       @db.Decimal(10, 3)
+  availableCapacityKg Decimal       @db.Decimal(10, 3)
+  status              TripLegStatus @default(ACTIVE)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  shipmentLegs ShipmentLeg[]
+
+  @@index([originRegion, destinationRegion, departAt])
+  @@index([tripId, sequence])
+  @@index([status])
+  @@map("trip_legs")
+}
+
+// ─────────────────────────── Hubs (Node 3) ───────────────────────────
+
+model Hub {
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String
+  operatorUserId String    @db.Uuid
+  operator       Profile   @relation(fields: [operatorUserId], references: [id])
+  hubTypes       HubType[]
+  region         String
+  address        String
+  geoLat         Decimal?  @db.Decimal(9, 6)
+  geoLng         Decimal?  @db.Decimal(9, 6)
+  operatingHours Json?
+  status         HubStatus @default(PENDING_APPROVAL)
+  countryCode    String    @default("ET")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  createdBy      String?   @db.Uuid
+  deletedAt      DateTime?
+
+  @@index([region, status])
+  @@index([operatorUserId])
+  @@map("hubs")
+}
+
+// ─────────────────────────── Shipments ───────────────────────────
+
+model Shipment {
+  id                  String         @id @default(uuid()) @db.Uuid
+  senderId            String         @db.Uuid
+  sender              Profile        @relation("ShipmentSender", fields: [senderId], references: [id])
+  receiverName        String
+  receiverPhone       String
+  receiverUserId      String?        @db.Uuid
+  receiverUser        Profile?       @relation("ShipmentReceiver", fields: [receiverUserId], references: [id])
+  originRegion        String
+  destinationRegion   String
+  status              ShipmentStatus @default(DRAFT)
+  version             Int            @default(0)
+  idempotencyKey      String?
+  pricingSnapshot     Json?
+  carrierFeeEtb       Decimal        @default(0) @db.Decimal(12, 2)
+  aggregatorFeeEtb    Decimal        @default(0) @db.Decimal(12, 2)
+  platformFeeEtb      Decimal        @default(0) @db.Decimal(12, 2)
+  insurancePremiumEtb Decimal        @default(0) @db.Decimal(12, 2)
+  taxRate             Decimal        @default(0) @db.Decimal(5, 4)
+  taxAmountEtb        Decimal        @default(0) @db.Decimal(12, 2)
+  totalPriceEtb       Decimal        @default(0) @db.Decimal(12, 2)
+  currency            String         @default("ETB")
+  insuranceOptedIn    Boolean        @default(false)
+  countryCode         String         @default("ET")
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  createdBy           String?        @db.Uuid
+  deletedAt           DateTime?
+
+  items         Item[]
+  legs          ShipmentLeg[]
+  handoffs      HandoffRecord[]
+  checks        RestrictionCheck[]
+  statusHistory ShipmentStatusHistory[]
+  escrow        EscrowRecord?
+
+  @@unique([senderId, idempotencyKey])
+  @@index([status])
+  @@index([senderId])
+  @@index([originRegion, destinationRegion])
+  @@map("shipments")
+}
+
+model ShipmentLeg {
+  id               String            @id @default(uuid()) @db.Uuid
+  shipmentId       String            @db.Uuid
+  shipment         Shipment          @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  sequence         Int
+  tripLegId        String?           @db.Uuid
+  tripLeg          TripLeg?          @relation(fields: [tripLegId], references: [id])
+  originHubId      String?           @db.Uuid // soft ref → Hub
+  destinationHubId String?           @db.Uuid // soft ref → Hub
+  travelerId       String?           @db.Uuid
+  traveler         Profile?          @relation("ShipmentLegTraveler", fields: [travelerId], references: [id])
+  status           ShipmentLegStatus @default(PLANNED)
+  version          Int               @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  items    Item[]
+  handoffs HandoffRecord[]
+
+  @@index([shipmentId, sequence])
+  @@index([tripLegId])
+  @@index([travelerId, status])
+  @@map("shipment_legs")
+}
+
+model Item {
+  id               String       @id @default(uuid()) @db.Uuid
+  shipmentId       String       @db.Uuid
+  shipment         Shipment     @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  shipmentLegId    String?      @db.Uuid
+  shipmentLeg      ShipmentLeg? @relation(fields: [shipmentLegId], references: [id])
+  category         String
+  description      String
+  declaredWeightKg Decimal      @db.Decimal(10, 3)
+  actualWeightKg   Decimal?     @db.Decimal(10, 3)
+  declaredValueEtb Decimal?     @db.Decimal(12, 2)
+  sealId           String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deletedAt        DateTime?
+
+  checks RestrictionCheck[]
+
+  @@index([shipmentId])
+  @@index([shipmentLegId, category])
+  @@map("items")
+}
+
+/// Verification event at a custody handoff — Constraint 2.2. Immutable evidence.
+model HandoffRecord {
+  id                 String        @id @default(uuid()) @db.Uuid
+  shipmentId         String        @db.Uuid
+  shipment           Shipment      @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  shipmentLegId      String?       @db.Uuid
+  shipmentLeg        ShipmentLeg?  @relation(fields: [shipmentLegId], references: [id])
+  handoffType        HandoffType
+  fromActorId        String        @db.Uuid
+  fromActor          Profile       @relation("HandoffFrom", fields: [fromActorId], references: [id])
+  toActorId          String        @db.Uuid
+  toActor            Profile       @relation("HandoffTo", fields: [toActorId], references: [id])
+  photoUrls          String[] // ≥1 required at the service layer
+  videoUrl           String?
+  captureMethod      CaptureMethod @default(LIVE)
+  acknowledgmentText String?
+  acknowledged       Boolean       @default(false)
+  sealApplied        Boolean       @default(false)
+  sealId             String?
+  sealIntact         Boolean?
+  geoLat             Decimal?      @db.Decimal(9, 6)
+  geoLng             Decimal?      @db.Decimal(9, 6)
+  capturedAt         DateTime
+  createdAt          DateTime      @default(now())
+
+  @@index([shipmentId])
+  @@index([shipmentLegId, handoffType])
+  @@index([capturedAt])
+  @@map("handoff_records")
+}
+
+// ─────────────────────────── Rules engine ───────────────────────────
+
+/// Configurable restriction rule — Constraint 2.4 (data, not code).
+model ItemRestriction {
+  id                    String               @id @default(uuid()) @db.Uuid
+  itemCategory          String
+  corridorCode          String?
+  corridorOverrideOf    String?              @db.Uuid
+  parentRule            ItemRestriction?     @relation("CorridorOverride", fields: [corridorOverrideOf], references: [id])
+  overrides             ItemRestriction[]    @relation("CorridorOverride")
+  maxWeightKg           Decimal?             @db.Decimal(10, 3)
+  maxValueEtb           Decimal?             @db.Decimal(12, 2)
+  frequencySensitive    Boolean              @default(false)
+  maxWeightKgFrequent   Decimal?             @db.Decimal(10, 3)
+  requiresDeclaration   Boolean              @default(false)
+  requiresSpecialPermit Boolean              @default(false)
+  prohibited            Boolean              @default(false)
+  direction             RestrictionDirection @default(BOTH)
+  notes                 String?
+  sourceRegulation      String
+  effectiveFrom         DateTime             @db.Date
+  effectiveUntil        DateTime?            @db.Date
+  countryCode           String               @default("ET")
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  createdBy             String?              @db.Uuid
+
+  checks RestrictionCheck[]
+
+  @@index([itemCategory, corridorCode, effectiveFrom])
+  @@index([prohibited])
+  @@map("item_restrictions")
+}
+
+/// Audit log of a rules-engine run.
+model RestrictionCheck {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  shipmentId            String                  @db.Uuid
+  shipment              Shipment                @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  itemId                String?                 @db.Uuid
+  item                  Item?                   @relation(fields: [itemId], references: [id])
+  trigger               RestrictionCheckTrigger
+  result                RestrictionCheckResult
+  failedRuleId          String?                 @db.Uuid
+  failedRule            ItemRestriction?        @relation(fields: [failedRuleId], references: [id])
+  detail                Json?
+  travelerFrequencyTier CustomsFrequencyTier?
+  createdAt             DateTime                @default(now())
+
+  @@index([shipmentId])
+  @@index([result])
+  @@map("restriction_checks")
+}
+
+// ─────────────────────────── Escrow / pricing ───────────────────────────
+
+/// Payment hold — OQ-1. Supports manual (HUB) and automated (PAYMENT_PROVIDER) without migration.
+model EscrowRecord {
+  id               String           @id @default(uuid()) @db.Uuid
+  shipmentId       String           @unique @db.Uuid
+  shipment         Shipment         @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  amountEtb        Decimal          @db.Decimal(12, 2)
+  currency         String           @default("ETB")
+  holderType       EscrowHolderType @default(HUB)
+  holderId         String? // Hub id (manual) or provider ref (automated)
+  status           EscrowStatus     @default(PENDING)
+  releaseCondition String
+  heldAt           DateTime?
+  releasedAt       DateTime?
+  refundedAt       DateTime?
+  releasedBy       String?          @db.Uuid // AdminUser id (soft ref)
+  providerRef      String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([status])
+  @@map("escrow_records")
+}
+
+model CorridorPricing {
+  id                     String    @id @default(uuid()) @db.Uuid
+  originRegion           String
+  destinationRegion      String
+  ratePerKgEtb           Decimal   @db.Decimal(12, 2)
+  minChargeEtb           Decimal   @db.Decimal(12, 2)
+  aggregatorFlatFeeEtb   Decimal   @db.Decimal(12, 2)
+  platformCommissionRate Decimal   @db.Decimal(5, 4)
+  insuranceRate          Decimal   @db.Decimal(5, 4)
+  taxRate                Decimal   @default(0) @db.Decimal(5, 4)
+  effectiveFrom          DateTime  @db.Date
+  effectiveUntil         DateTime? @db.Date
+  countryCode            String    @default("ET")
+  createdAt              DateTime  @default(now())
+
+  @@index([originRegion, destinationRegion, effectiveFrom])
+  @@map("corridor_pricing")
+}
+
+// ─────────────────────────── Notifications (outbox) ───────────────────────────
+
+model Notification {
+  id             String              @id @default(uuid()) @db.Uuid
+  userId         String?             @db.Uuid
+  user           Profile?            @relation(fields: [userId], references: [id])
+  recipientPhone String?
+  channel        NotificationChannel
+  templateKey    String
+  payload        Json
+  language       Language            @default(AM)
+  status         NotificationStatus  @default(QUEUED)
+  attempts       Int                 @default(0)
+  providerRef    String?
+  sentAt         DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([status, channel])
+  @@index([userId])
+  @@map("notifications")
+}
+
+// ─────────────────────────── Audit / history / infra ───────────────────────────
+
+/// Append-only per-shipment transition log (audit trail without event sourcing).
+model ShipmentStatusHistory {
+  id              String          @id @default(uuid()) @db.Uuid
+  shipmentId      String          @db.Uuid
+  shipment        Shipment        @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  fromStatus      ShipmentStatus?
+  toStatus        ShipmentStatus
+  actorType       AuditActorType
+  actorId         String?         @db.Uuid
+  handoffRecordId String?         @db.Uuid
+  reason          String?
+  createdAt       DateTime        @default(now())
+
+  @@index([shipmentId, createdAt])
+  @@map("shipment_status_history")
+}
+
+/// Immutable audit log — every admin action + every state transition.
+model AuditLog {
+  id          String         @id @default(uuid()) @db.Uuid
+  actorType   AuditActorType
+  actorId     String
+  action      String
+  entityType  String
+  entityId    String
+  beforeState Json?
+  afterState  Json?
+  metadata    Json?
+  ipAddress   String?
+  createdAt   DateTime       @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@map("audit_logs")
+}
+
+model WebhookLog {
+  id              String          @id @default(uuid()) @db.Uuid
+  provider        WebhookProvider
+  eventType       String
+  eventId         String?
+  payload         Json
+  signatureValid  Boolean
+  processedAt     DateTime?
+  processingError String?
+  createdAt       DateTime        @default(now())
+
+  @@index([provider, eventId])
+  @@map("webhook_logs")
+}
+
+model AppConfig {
+  key         String   @id
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?  @db.Uuid // AdminUser id (soft ref)
+
+  @@map("app_config")
+}
+
+model OperationalNote {
+  id         String   @id @default(uuid()) @db.Uuid
+  entityType String
+  entityId   String
+  note       String
+  createdBy  String?  @db.Uuid // AdminUser id (soft ref)
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@map("operational_notes")
+}
+
+model IdempotencyKey {
+  key          String   @id
+  scope        String
+  responseBody Json?
+  createdAt    DateTime @default(now())
+
+  @@map("idempotency_keys")
+}

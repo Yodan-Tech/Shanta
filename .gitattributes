@@ -1,0 +1,15 @@
+# Normalize line endings: LF in the repo (CI runs on Linux), regardless of OS.
+* text=auto eol=lf
+
+# Binary assets — never normalize.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+pnpm-lock.yaml -diff

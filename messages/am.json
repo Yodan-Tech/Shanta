@@ -1,0 +1,62 @@
+{
+  "brand": {
+    "name": "ሻንታ",
+    "tagline": "ከሻንጣ በላይ ይሸከሙ",
+    "promise": "የሚያስፈልገዎትን በሚያምኑት ሰው ይላኩ።"
+  },
+  "common": {
+    "continue": "ቀጥል",
+    "back": "ተመለስ",
+    "loading": "በመጫን ላይ…",
+    "signOut": "ውጣ",
+    "language": "ቋንቋ",
+    "english": "English",
+    "amharic": "አማርኛ"
+  },
+  "landing": {
+    "headline": "የሚያስፈልገዎትን በሚያምኑት ሰው ይላኩ",
+    "subhead": "ሻንታ ላኪዎችን ትርፍ የሻንጣ ቦታ ካላቸው የታመኑ ተጓዦች ጋር ያገናኛል — በተረጋገጠ ርክክብ እና በዋስትና አጃቢ።",
+    "getStarted": "ጀምር",
+    "signIn": "ግባ"
+  },
+  "auth": {
+    "phoneTitle": "ወደ ሻንታ ይግቡ",
+    "phoneSubtitle": "ስልክ ቁጥርዎን ያስገቡ፣ የማረጋገጫ ኮድ እንልክልዎታለን።",
+    "phoneLabel": "ስልክ ቁጥር",
+    "phonePlaceholder": "+2519XXXXXXXX",
+    "sendCode": "ኮድ ላክ",
+    "otpTitle": "ኮድዎን ያስገቡ",
+    "otpSubtitle": "ባለ 6-አሃዝ ኮድ ወደ {phone} ልከናል።",
+    "otpLabel": "የማረጋገጫ ኮድ",
+    "verify": "አረጋግጥ",
+    "resend": "ኮድ እንደገና ላክ",
+    "changeNumber": "ቁጥር ቀይር",
+    "errorInvalidPhone": "እባክዎ ትክክለኛ ስልክ ቁጥር በዓለም አቀፍ ቅርጸት ያስገቡ።",
+    "errorInvalidCode": "ኮዱ ትክክል አይደለም ወይም ጊዜው አልፎታል። እባክዎ እንደገና ይሞክሩ።",
+    "errorRateLimited": "ብዙ ሙከራዎች። እባክዎ ትንሽ ቆይተው ይሞክሩ።"
+  },
+  "onboarding": {
+    "title": "ሻንታን እንዴት ይጠቀማሉ?",
+    "subtitle": "ከአንድ በላይ መምረጥ ይችላሉ — በኋላም መቀየር ይችላሉ።",
+    "sender": "ዕቃ መላክ",
+    "senderDesc": "ወደ ሌላ ከተማ የምልከው ነገር አለኝ።",
+    "traveler": "ዕቃ መሸከም",
+    "travelerDesc": "በመጓዝ ላይ ነኝ እና ትርፍ የሻንጣ ቦታ አለኝ።",
+    "aggregator": "ማዕከል ማስተዳደር",
+    "aggregatorDesc": "የመረከቢያ / ማሰባሰቢያ ቦታ አንቀሳቅሳለሁ።",
+    "save": "አስቀምጥና ቀጥል"
+  },
+  "dashboard": {
+    "welcome": "እንኳን ወደ ሻንታ በደህና መጡ",
+    "sender": "የላኪ ዳሽቦርድ",
+    "traveler": "የተጓዥ ዳሽቦርድ",
+    "aggregator": "የማዕከል ዳሽቦርድ",
+    "comingSoon": "የእርስዎ መሣሪያዎች ምዕራፍ 1ን ስናስፋፋ እዚህ ይታያሉ።",
+    "yourRoles": "የእርስዎ ሚናዎች"
+  },
+  "admin": {
+    "title": "ሻንታ አስተዳደር",
+    "restricted": "የተከለከለ ቦታ",
+    "noAccess": "የአስተዳደር ቦታ መዳረሻ የለዎትም።"
+  }
+}
