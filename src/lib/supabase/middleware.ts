@@ -44,7 +44,12 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  if (!user && !isPublic(pathname)) {
+  // API routes enforce auth in their own handlers and must return JSON envelopes,
+  // never an HTML redirect — so never redirect them here (the matcher also excludes
+  // /api, but this is the authoritative guard).
+  const isApi = pathname.startsWith("/api");
+
+  if (!user && !isApi && !isPublic(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("redirect", pathname);
