@@ -75,6 +75,32 @@ Request:
 ```
 → `200 { "data": { ...shipment } }` · `409 CONFLICT` (version) · `409`/`422` (illegal/guarded transition).
 
+### Hub verification chain (Constraint 2.2) · role: AGGREGATOR
+Three `multipart/form-data` endpoints. Each derives its guard context **server-side** from the
+uploaded evidence (never a client flag), validates photos by **magic bytes** (non-images → `422`),
+stores them in the **private** `handoff-photos` bucket, writes an immutable `HandoffRecord`, and
+advances the shipment via the guarded state machine. Order is structurally enforced: verify is
+impossible before intake; seal is impossible before verify.
+
+#### `POST /api/v1/shipments/:id/intake`
+Form fields: `photo` (≥1 image) + `payload` JSON `{ "itemWeights":[{"itemId","actualWeightKg"}], "cashChecked": true, "geoLat"?, "geoLng"? }`.
+Weighs the parcel, requires an explicit **cash check** (2.5), **re-runs the rules engine on actual
+weights** (2.4), and advances `AWAITING_HUB_INTAKE → AT_ORIGIN_HUB`. If `|actual−declared| total`
+exceeds the `intake.weight_discrepancy_threshold_kg` AppConfig, or the re-check fails → `WEIGHT_DISCREPANCY`.
+→ `200 { "data": { "handoff": {...}, "shipment": { "status": "AT_ORIGIN_HUB"|"WEIGHT_DISCREPANCY" }, "weightDiscrepancy": bool, "restriction": {...} } }`
+Errors: `422 UNPROCESSABLE` (no photo / cashChecked false / missing weight / illegal state); `422` (non-image upload).
+
+#### `POST /api/v1/shipments/:id/verify`
+Form fields: `photo` (≥1 contents image). Advances `AT_ORIGIN_HUB → CONTENTS_VERIFIED`.
+→ `200 { "data": { "handoff": {...}, "shipment": { "status": "CONTENTS_VERIFIED" } } }`
+Errors: `422` (no photo); `409 CONFLICT` (not in AT_ORIGIN_HUB — illegal transition).
+
+#### `POST /api/v1/shipments/:id/seal`
+Form fields: `photo` (≥1 seal image) + `payload` JSON `{ "sealId" }`. Only valid after verification;
+stamps the seal id on every item and advances `CONTENTS_VERIFIED → SEALED → AWAITING_MATCH`.
+→ `200 { "data": { "handoff": { "sealApplied": true, "sealId" }, "shipment": { "status": "AWAITING_MATCH" } } }`
+Errors: `422` (no seal id / no photo); `409 CONFLICT` (sealing before verification — illegal transition).
+
 ### `POST /api/v1/admin/escrow/:id/release` — release the hub escrow · ADMIN (FINANCE/SUPER_ADMIN)
 `:id` is the **shipment id** (escrow is 1—1 with a shipment). Releases the held logistics fee
 **only when the escrow is `HELD` and the shipment is `DELIVERY_CONFIRMED`** (never on a `DISPUTED`
@@ -121,10 +147,10 @@ Lets the UI render categories, caps, frequency-sensitive limits, and prohibition
 
 ---
 
-## Not yet implemented (next backend slices, before/after Supabase wiring)
+## Not yet implemented (next backend slices)
 
-Dedicated hub-operation endpoints (intake → verify → seal) that derive guard context
-server-side from handoff records, including the escrow `markHeld` on custody transfer
-(Milestone 5–6); handoff/photo upload (Supabase Storage signed URLs); receiver SMS delivery
-confirmation; notifications outbox; KYC submission/review. The state machine, rules engine,
-pricing, matching, and **manual hub escrow** (create→arm, release, refund) are built and tested.
+Matching assignment + traveler accept/reject with the escrow `markHeld` on custody transfer
+(Milestone 6); delivery + receiver SMS confirmation (Milestone 7); notifications outbox
+(Milestone 8); KYC submission/review (Milestone 9). The state machine, rules engine, pricing,
+matching, **manual hub escrow** (arm/release/refund), and the **hub verification chain**
+(intake → verify → seal, private Storage + magic-byte validation + signed URLs) are built and tested.

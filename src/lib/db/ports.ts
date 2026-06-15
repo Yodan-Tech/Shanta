@@ -8,6 +8,12 @@ import type {
   EscrowRecord,
   EscrowStatus,
   EscrowHolderType,
+  HandoffRecord,
+  HandoffType,
+  CaptureMethod,
+  RestrictionCheckTrigger,
+  RestrictionCheckResult,
+  CustomsFrequencyTier,
 } from "@prisma/client";
 import type { RuleInput, PricingRule } from "@/lib/domain/types";
 import type { TravelerCandidate } from "@/lib/domain/matching";
@@ -190,6 +196,68 @@ export interface EscrowRepository {
   applyChange(input: ApplyEscrowChangeInput): Promise<ApplyEscrowChangeResult>;
 }
 
+// ── Handoff: immutable verification evidence + atomic shipment transition ──────
+
+export interface RestrictionCheckData {
+  trigger: RestrictionCheckTrigger;
+  result: RestrictionCheckResult;
+  itemId?: string;
+  failedRuleId?: string;
+  detail?: Record<string, unknown>;
+  travelerFrequencyTier?: CustomsFrequencyTier;
+}
+
+/**
+ * Record an immutable HandoffRecord and advance the shipment in ONE transaction,
+ * optionally stamping item actual weights / seal id and writing a RestrictionCheck
+ * (hub intake re-validation, Constraint 2.4). The guard context for the transition
+ * is derived by the service from this same evidence — never trusted from the client.
+ */
+export interface RecordHandoffInput {
+  shipmentId: string;
+  shipmentLegId?: string;
+  handoffType: HandoffType;
+  fromActorId: string;
+  toActorId: string;
+  photoUrls: string[];
+  videoUrl?: string;
+  captureMethod: CaptureMethod;
+  acknowledgmentText?: string;
+  acknowledged?: boolean;
+  sealApplied?: boolean;
+  sealId?: string;
+  sealIntact?: boolean;
+  geoLat?: number;
+  geoLng?: number;
+  capturedAt: Date;
+  // Atomic shipment transition driven by this handoff.
+  expectedVersion: number;
+  toStatus: ShipmentStatus;
+  actorType: AuditActorType;
+  actorId?: string;
+  reason?: string;
+  // Optional side effects.
+  itemActualWeights?: { itemId: string; actualWeightKg: number }[];
+  /** Stamp this seal id onto every item (sealing step). */
+  itemSealId?: string;
+  restrictionCheck?: RestrictionCheckData;
+}
+
+export type RecordHandoffResult =
+  | { ok: true; handoff: HandoffRecord; shipment: ShipmentWithItems }
+  | { ok: false; reason: "VERSION_CONFLICT" | "NOT_FOUND" };
+
+export interface HandoffRepository {
+  record(input: RecordHandoffInput): Promise<RecordHandoffResult>;
+  listByShipment(shipmentId: string): Promise<HandoffRecord[]>;
+}
+
+/** Runtime configuration (AppConfig) reads for thresholds/flags. */
+export interface ConfigRepository {
+  /** Numeric config value by key (AppConfig.value = { value: number }), or null. */
+  getNumber(key: string): Promise<number | null>;
+}
+
 /** Aggregate of all repositories, injected into services. */
 export interface Repositories {
   shipments: ShipmentRepository;
@@ -197,4 +265,6 @@ export interface Repositories {
   rules: RuleRepository;
   pricing: PricingRepository;
   escrows: EscrowRepository;
+  handoffs: HandoffRepository;
+  config: ConfigRepository;
 }

@@ -135,9 +135,20 @@ async function main() {
         "Max distinct senders of one category matched to a single traveler/trip.",
     },
   });
+  await prisma.appConfig.upsert({
+    where: { key: "intake.weight_discrepancy_threshold_kg" },
+    update: { value: { value: 0.5 } },
+    create: {
+      key: "intake.weight_discrepancy_threshold_kg",
+      value: { value: 0.5 },
+      description:
+        "Absolute kg gap between declared and actual total weight at hub intake that flags WEIGHT_DISCREPANCY (Constraint 2.4 re-validation).",
+    },
+  });
 
   const rules = await prisma.itemRestriction.count();
-  console.log(`Seed complete: ${rules} restriction rules, 1 corridor price, 2 configs.`);
+  const configs = await prisma.appConfig.count();
+  console.log(`Seed complete: ${rules} restriction rules, 1 corridor price, ${configs} configs.`);
 }
 
 main()

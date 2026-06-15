@@ -14,6 +14,8 @@ import type {
   RuleRepository,
   PricingRepository,
   EscrowRepository,
+  HandoffRepository,
+  ConfigRepository,
   Repositories,
   CreateShipmentData,
   CreateTripData,
@@ -25,6 +27,8 @@ import type {
   ArmEscrowResult,
   ApplyEscrowChangeInput,
   ApplyEscrowChangeResult,
+  RecordHandoffInput,
+  RecordHandoffResult,
   CandidateSearchCriteria,
 } from "./ports";
 
@@ -434,6 +438,99 @@ export class PrismaEscrowRepository implements EscrowRepository {
   }
 }
 
+// ── Handoff + config repositories ─────────────────────────────────────────────
+
+export class PrismaHandoffRepository implements HandoffRepository {
+  async record(input: RecordHandoffInput): Promise<RecordHandoffResult> {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const handoff = await tx.handoffRecord.create({
+          data: {
+            shipmentId: input.shipmentId,
+            shipmentLegId: input.shipmentLegId ?? null,
+            handoffType: input.handoffType,
+            fromActorId: input.fromActorId,
+            toActorId: input.toActorId,
+            photoUrls: input.photoUrls,
+            videoUrl: input.videoUrl ?? null,
+            captureMethod: input.captureMethod,
+            acknowledgmentText: input.acknowledgmentText ?? null,
+            acknowledged: input.acknowledged ?? false,
+            sealApplied: input.sealApplied ?? false,
+            sealId: input.sealId ?? null,
+            sealIntact: input.sealIntact ?? null,
+            geoLat: input.geoLat ?? null,
+            geoLng: input.geoLng ?? null,
+            capturedAt: input.capturedAt,
+          },
+        });
+
+        for (const w of input.itemActualWeights ?? []) {
+          await tx.item.update({
+            where: { id: w.itemId },
+            data: { actualWeightKg: w.actualWeightKg },
+          });
+        }
+        if (input.itemSealId) {
+          await tx.item.updateMany({
+            where: { shipmentId: input.shipmentId, deletedAt: null },
+            data: { sealId: input.itemSealId },
+          });
+        }
+        if (input.restrictionCheck) {
+          const rc = input.restrictionCheck;
+          await tx.restrictionCheck.create({
+            data: {
+              shipmentId: input.shipmentId,
+              itemId: rc.itemId ?? null,
+              trigger: rc.trigger,
+              result: rc.result,
+              failedRuleId: rc.failedRuleId ?? null,
+              ...(rc.detail ? { detail: rc.detail as Prisma.InputJsonValue } : {}),
+              travelerFrequencyTier: rc.travelerFrequencyTier ?? null,
+            },
+          });
+        }
+
+        const res = await txTransitionShipment(tx, {
+          shipmentId: input.shipmentId,
+          expectedVersion: input.expectedVersion,
+          toStatus: input.toStatus,
+          actorType: input.actorType,
+          ...(input.actorId ? { actorId: input.actorId } : {}),
+          ...(input.reason ? { reason: input.reason } : {}),
+          handoffRecordId: handoff.id,
+        });
+        if (!res.ok) throw new TxAbort(res.reason);
+        return { ok: true as const, handoff, shipment: res.shipment };
+      });
+    } catch (e) {
+      if (e instanceof TxAbort) {
+        const reason = e.reason === "ALREADY_EXISTS" ? "NOT_FOUND" : e.reason;
+        return { ok: false, reason };
+      }
+      throw e;
+    }
+  }
+
+  async listByShipment(shipmentId: string) {
+    return prisma.handoffRecord.findMany({
+      where: { shipmentId },
+      orderBy: { capturedAt: "asc" },
+    });
+  }
+}
+
+export class PrismaConfigRepository implements ConfigRepository {
+  async getNumber(key: string): Promise<number | null> {
+    const row = await prisma.appConfig.findUnique({ where: { key } });
+    if (!row) return null;
+    const v = row.value as { value?: unknown } | null;
+    const n = typeof v?.value === "number" ? v.value : Number(v?.value);
+    return Number.isFinite(n) ? n : null;
+  }
+}
+
 /** Production repositories backed by Prisma (Supabase Postgres). */
 export function getRepositories(): Repositories {
   return {
@@ -442,5 +539,7 @@ export function getRepositories(): Repositories {
     rules: new PrismaRuleRepository(),
     pricing: new PrismaPricingRepository(),
     escrows: new PrismaEscrowRepository(),
+    handoffs: new PrismaHandoffRepository(),
+    config: new PrismaConfigRepository(),
   };
 }
