@@ -3,6 +3,7 @@ import {
   ShipmentStatus,
   TripStatus,
   TripLegStatus,
+  ShipmentLegStatus,
   EscrowStatus,
   type Shipment,
   type Item,
@@ -35,6 +36,12 @@ import type {
   RecordHandoffInput,
   RecordHandoffResult,
   RestrictionCheckData,
+  MatchRepository,
+  TripLegMatchInfo,
+  AssignTravelerInput,
+  AssignTravelerResult,
+  ReleaseMatchInput,
+  ReleaseMatchResult,
 } from "./ports";
 
 /**
@@ -355,6 +362,97 @@ export class InMemoryConfigRepository implements ConfigRepository {
   }
 }
 
+interface FakeShipmentLeg {
+  id: string;
+  shipmentId: string;
+  tripLegId: string;
+  travelerId: string;
+  status: ShipmentLegStatus;
+}
+
+/**
+ * Match fake. Trip-leg match snapshots are injected by tests (`legs`); assignment
+ * decrements the leg's capacity and creates a ShipmentLeg, release restores it —
+ * each atomic with the shipment transition via the shared shipment store.
+ */
+export class InMemoryMatchRepository implements MatchRepository {
+  readonly legs = new Map<string, TripLegMatchInfo>();
+  readonly shipmentLegs: FakeShipmentLeg[] = [];
+
+  constructor(private readonly shipmentsRepo: InMemoryShipmentRepository) {}
+
+  async getTripLegMatchInfo(tripLegId: string): Promise<TripLegMatchInfo | null> {
+    return this.legs.get(tripLegId) ?? null;
+  }
+
+  async assignTraveler(input: AssignTravelerInput): Promise<AssignTravelerResult> {
+    const shipment = this.shipmentsRepo.shipments.get(input.shipmentId);
+    if (!shipment) return { ok: false, reason: "NOT_FOUND" };
+    if (shipment.version !== input.expectedVersion) {
+      return { ok: false, reason: "VERSION_CONFLICT" };
+    }
+    const leg = this.legs.get(input.tripLegId);
+    if (!leg) return { ok: false, reason: "NOT_FOUND" };
+    if (leg.legStatus !== TripLegStatus.ACTIVE || leg.tripStatus !== TripStatus.ACTIVE) {
+      return { ok: false, reason: "LEG_INACTIVE" };
+    }
+    if (leg.availableCapacityKg < input.weightKg) {
+      return { ok: false, reason: "CAPACITY" };
+    }
+
+    leg.availableCapacityKg -= input.weightKg;
+    const sl: FakeShipmentLeg = {
+      id: uuid(),
+      shipmentId: input.shipmentId,
+      tripLegId: input.tripLegId,
+      travelerId: input.travelerId,
+      status: ShipmentLegStatus.MATCHED,
+    };
+    this.shipmentLegs.push(sl);
+
+    const res = await this.shipmentsRepo.applyTransition({
+      shipmentId: input.shipmentId,
+      expectedVersion: input.expectedVersion,
+      toStatus: input.toStatus,
+      actorType: "USER",
+      ...(input.actorId ? { actorId: input.actorId } : {}),
+      reason: "matched to traveler",
+    });
+    if (!res.ok) {
+      leg.availableCapacityKg += input.weightKg;
+      this.shipmentLegs.pop();
+      return res;
+    }
+    return { ok: true, shipment: res.shipment };
+  }
+
+  async releaseMatch(input: ReleaseMatchInput): Promise<ReleaseMatchResult> {
+    const shipment = this.shipmentsRepo.shipments.get(input.shipmentId);
+    if (!shipment) return { ok: false, reason: "NOT_FOUND" };
+    if (shipment.version !== input.expectedVersion) {
+      return { ok: false, reason: "VERSION_CONFLICT" };
+    }
+    const sl = this.shipmentLegs.find(
+      (s) => s.shipmentId === input.shipmentId && s.status === ShipmentLegStatus.MATCHED,
+    );
+    if (sl) {
+      sl.status = ShipmentLegStatus.CANCELLED;
+      const leg = this.legs.get(sl.tripLegId);
+      if (leg) leg.availableCapacityKg += input.weightKg;
+    }
+    const res = await this.shipmentsRepo.applyTransition({
+      shipmentId: input.shipmentId,
+      expectedVersion: input.expectedVersion,
+      toStatus: input.toStatus,
+      actorType: input.actorType,
+      ...(input.actorId ? { actorId: input.actorId } : {}),
+      reason: input.reason ?? "match released",
+    });
+    if (!res.ok) return res;
+    return { ok: true, shipment: res.shipment };
+  }
+}
+
 export class InMemoryTripRepository implements TripRepository {
   readonly trips = new Map<string, TripWithLegs>();
   /** Candidates returned by searchCandidates — set by tests. */
@@ -430,6 +528,7 @@ export function makeInMemoryRepositories(opts?: {
   escrows: InMemoryEscrowRepository;
   handoffs: InMemoryHandoffRepository;
   config: InMemoryConfigRepository;
+  match: InMemoryMatchRepository;
 } {
   const shipments = new InMemoryShipmentRepository();
   return {
@@ -440,5 +539,6 @@ export function makeInMemoryRepositories(opts?: {
     escrows: new InMemoryEscrowRepository(shipments),
     handoffs: new InMemoryHandoffRepository(shipments),
     config: new InMemoryConfigRepository(opts?.config ?? {}),
+    match: new InMemoryMatchRepository(shipments),
   };
 }

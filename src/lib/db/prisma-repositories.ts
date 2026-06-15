@@ -29,6 +29,12 @@ import type {
   ApplyEscrowChangeResult,
   RecordHandoffInput,
   RecordHandoffResult,
+  MatchRepository,
+  TripLegMatchInfo,
+  AssignTravelerInput,
+  AssignTravelerResult,
+  ReleaseMatchInput,
+  ReleaseMatchResult,
   CandidateSearchCriteria,
 } from "./ports";
 
@@ -37,6 +43,13 @@ const num = (d: Prisma.Decimal): number => d.toNumber();
 /** Carries a typed failure reason out of a $transaction so it can roll back. */
 class TxAbort extends Error {
   constructor(public readonly reason: "VERSION_CONFLICT" | "NOT_FOUND" | "ALREADY_EXISTS") {
+    super(reason);
+  }
+}
+
+/** Match-specific transaction aborts (capacity / inactive leg). */
+class MatchAbort extends Error {
+  constructor(public readonly reason: "CAPACITY" | "LEG_INACTIVE") {
     super(reason);
   }
 }
@@ -531,6 +544,130 @@ export class PrismaConfigRepository implements ConfigRepository {
   }
 }
 
+// ── Match repository (assignment + release) ───────────────────────────────────
+
+export class PrismaMatchRepository implements MatchRepository {
+  async getTripLegMatchInfo(
+    tripLegId: string,
+    itemCategory: string,
+  ): Promise<TripLegMatchInfo | null> {
+    const leg = await prisma.tripLeg.findUnique({
+      where: { id: tripLegId },
+      include: { trip: { include: { traveler: { include: { travelProfile: true } } } } },
+    });
+    if (!leg) return null;
+    const agg = await prisma.item.aggregate({
+      _sum: { declaredWeightKg: true },
+      where: {
+        category: itemCategory,
+        shipmentLeg: {
+          tripLegId,
+          status: { notIn: [ShipmentLegStatus.CANCELLED, ShipmentLegStatus.RETURNED] },
+        },
+      },
+    });
+    const traveler = leg.trip.traveler;
+    return {
+      tripLegId: leg.id,
+      travelerId: traveler.id,
+      departAt: leg.departAt,
+      availableCapacityKg: num(leg.availableCapacityKg),
+      legStatus: leg.status,
+      tripStatus: leg.trip.status,
+      travelerActive: traveler.status === "ACTIVE",
+      travelerKycVerified: traveler.kycStatus === "VERIFIED",
+      tripCountLast90Days: traveler.travelProfile?.tripCountLast90Days ?? 0,
+      categoryWeightAcceptedKg: agg._sum.declaredWeightKg
+        ? num(agg._sum.declaredWeightKg)
+        : 0,
+    };
+  }
+
+  async assignTraveler(input: AssignTravelerInput): Promise<AssignTravelerResult> {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const leg = await tx.tripLeg.findUnique({
+          where: { id: input.tripLegId },
+          include: { trip: { select: { status: true } } },
+        });
+        if (!leg) throw new TxAbort("NOT_FOUND");
+        if (leg.status !== "ACTIVE" || leg.trip.status !== "ACTIVE") {
+          throw new MatchAbort("LEG_INACTIVE");
+        }
+        // Atomic, guarded capacity decrement — 0 rows ⇒ insufficient capacity.
+        const dec = await tx.tripLeg.updateMany({
+          where: { id: input.tripLegId, availableCapacityKg: { gte: input.weightKg } },
+          data: { availableCapacityKg: { decrement: input.weightKg } },
+        });
+        if (dec.count === 0) throw new MatchAbort("CAPACITY");
+
+        await tx.shipmentLeg.create({
+          data: {
+            shipmentId: input.shipmentId,
+            sequence: 1,
+            tripLegId: input.tripLegId,
+            travelerId: input.travelerId,
+            status: ShipmentLegStatus.MATCHED,
+          },
+        });
+
+        const res = await txTransitionShipment(tx, {
+          shipmentId: input.shipmentId,
+          expectedVersion: input.expectedVersion,
+          toStatus: input.toStatus,
+          actorType: "USER",
+          ...(input.actorId ? { actorId: input.actorId } : {}),
+          reason: "matched to traveler",
+        });
+        if (!res.ok) throw new TxAbort(res.reason);
+        return { ok: true as const, shipment: res.shipment };
+      });
+    } catch (e) {
+      if (e instanceof MatchAbort) return { ok: false, reason: e.reason };
+      if (e instanceof TxAbort) {
+        return { ok: false, reason: e.reason === "ALREADY_EXISTS" ? "NOT_FOUND" : e.reason };
+      }
+      throw e;
+    }
+  }
+
+  async releaseMatch(input: ReleaseMatchInput): Promise<ReleaseMatchResult> {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const sl = await tx.shipmentLeg.findFirst({
+          where: { shipmentId: input.shipmentId, status: ShipmentLegStatus.MATCHED },
+          orderBy: { createdAt: "desc" },
+        });
+        if (sl?.tripLegId) {
+          await tx.tripLeg.update({
+            where: { id: sl.tripLegId },
+            data: { availableCapacityKg: { increment: input.weightKg } },
+          });
+          await tx.shipmentLeg.update({
+            where: { id: sl.id },
+            data: { status: ShipmentLegStatus.CANCELLED, version: { increment: 1 } },
+          });
+        }
+        const res = await txTransitionShipment(tx, {
+          shipmentId: input.shipmentId,
+          expectedVersion: input.expectedVersion,
+          toStatus: input.toStatus,
+          actorType: input.actorType,
+          ...(input.actorId ? { actorId: input.actorId } : {}),
+          reason: input.reason ?? "match released",
+        });
+        if (!res.ok) throw new TxAbort(res.reason);
+        return { ok: true as const, shipment: res.shipment };
+      });
+    } catch (e) {
+      if (e instanceof TxAbort) {
+        return { ok: false, reason: e.reason === "ALREADY_EXISTS" ? "NOT_FOUND" : e.reason };
+      }
+      throw e;
+    }
+  }
+}
+
 /** Production repositories backed by Prisma (Supabase Postgres). */
 export function getRepositories(): Repositories {
   return {
@@ -541,5 +678,6 @@ export function getRepositories(): Repositories {
     escrows: new PrismaEscrowRepository(),
     handoffs: new PrismaHandoffRepository(),
     config: new PrismaConfigRepository(),
+    match: new PrismaMatchRepository(),
   };
 }
