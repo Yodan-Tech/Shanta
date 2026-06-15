@@ -145,6 +145,16 @@ async function main() {
         "Absolute kg gap between declared and actual total weight at hub intake that flags WEIGHT_DISCREPANCY (Constraint 2.4 re-validation).",
     },
   });
+  await prisma.appConfig.upsert({
+    where: { key: "escrow.enabled" },
+    update: {},
+    create: {
+      key: "escrow.enabled",
+      value: { value: 1 },
+      description:
+        "Whether manual hub escrow is armed by default (1=yes, 0=no). Escrow is optional — it cannot always be provided; a shipment without it still flows end-to-end.",
+    },
+  });
 
   const rules = await prisma.itemRestriction.count();
   const configs = await prisma.appConfig.count();

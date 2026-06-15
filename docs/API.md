@@ -39,10 +39,12 @@ role-gated admin endpoint. Receivers are SMS-first and don't need the app.
 (`503` when degraded.)
 
 ### `POST /api/v1/shipments` — create a shipment · role: SENDER
-Runs the rules engine (Constraint 2.4) and computes price, then **arms a manual hub escrow**
-(`EscrowRecord` PENDING for the quoted total, `holderType: HUB`) and advances the shipment
-`RULES_VALIDATED → AWAITING_HUB_INTAKE` **in one transaction** (OQ-1). The returned shipment is
-therefore in `AWAITING_HUB_INTAKE` at `version: 1`.
+Runs the rules engine (Constraint 2.4) and computes price, then advances the shipment
+`RULES_VALIDATED → AWAITING_HUB_INTAKE`. **When escrow is available** it also arms a manual hub
+escrow (`EscrowRecord` PENDING for the quoted total, `holderType: HUB`) atomically with the
+transition (OQ-1). **Escrow is optional** — it can't always be provided; pass `"escrow": false`
+(or set the `escrow.enabled` AppConfig to `0`) and the shipment still moves, just with no
+money-hold. The returned shipment is in `AWAITING_HUB_INTAKE` at `version: 1` either way.
 Headers: `Idempotency-Key: <uuid>` (recommended).
 Request:
 ```json
