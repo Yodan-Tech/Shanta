@@ -21,6 +21,8 @@ import type {
   ConfigRepository,
   NotificationRepository,
   ProfileRepository,
+  KycRepository,
+  KycQueueItem,
   Repositories,
   CreateShipmentData,
   CreateTripData,
@@ -754,6 +756,121 @@ export class PrismaProfileRepository implements ProfileRepository {
   }
 }
 
+// ── KYC repository ────────────────────────────────────────────────────────────
+
+export class PrismaKycRepository implements KycRepository {
+  async getStatus(userId: string): Promise<string | null> {
+    const row = await prisma.profile.findUnique({
+      where: { id: userId },
+      select: { kycStatus: true },
+    });
+    return row?.kycStatus ?? null;
+  }
+
+  async submit(input: { userId: string; idDocumentUrl: string }): Promise<void> {
+    await prisma.profile.update({
+      where: { id: input.userId },
+      data: {
+        kycStatus: "PENDING_REVIEW",
+        idDocumentUrl: input.idDocumentUrl,
+        kycSubmittedAt: new Date(),
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        actorType: "USER",
+        actorId: input.userId,
+        action: "kyc.submit",
+        entityType: "Profile",
+        entityId: input.userId,
+        afterState: { kycStatus: "PENDING_REVIEW" },
+      },
+    });
+  }
+
+  async approve(input: { userId: string; reviewedBy: string }): Promise<void> {
+    const now = new Date();
+    await prisma.profile.update({
+      where: { id: input.userId },
+      data: {
+        kycStatus: "VERIFIED",
+        kycMethod: "MANUAL",
+        kycReviewedAt: now,
+        kycReviewedBy: input.reviewedBy,
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        actorType: "ADMIN",
+        actorId: input.reviewedBy,
+        action: "kyc.approve",
+        entityType: "Profile",
+        entityId: input.userId,
+        afterState: { kycStatus: "VERIFIED" },
+      },
+    });
+  }
+
+  async reject(input: {
+    userId: string;
+    reviewedBy: string;
+    reason: string;
+  }): Promise<void> {
+    const now = new Date();
+    await prisma.profile.update({
+      where: { id: input.userId },
+      data: {
+        kycStatus: "REJECTED",
+        kycMethod: "MANUAL",
+        kycReviewedAt: now,
+        kycReviewedBy: input.reviewedBy,
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        actorType: "ADMIN",
+        actorId: input.reviewedBy,
+        action: "kyc.reject",
+        entityType: "Profile",
+        entityId: input.userId,
+        afterState: { kycStatus: "REJECTED", reason: input.reason },
+      },
+    });
+    await prisma.operationalNote.create({
+      data: {
+        entityType: "Profile",
+        entityId: input.userId,
+        note: `KYC rejected: ${input.reason}`,
+        createdBy: input.reviewedBy,
+      },
+    });
+  }
+
+  async listPending(limit: number): Promise<KycQueueItem[]> {
+    const rows = await prisma.profile.findMany({
+      where: { kycStatus: "PENDING_REVIEW" },
+      select: {
+        id: true,
+        phone: true,
+        fullName: true,
+        kycStatus: true,
+        kycSubmittedAt: true,
+        idDocumentUrl: true,
+      },
+      orderBy: { kycSubmittedAt: "asc" },
+      take: limit,
+    });
+    return rows.map((r) => ({
+      userId: r.id,
+      phone: r.phone,
+      fullName: r.fullName,
+      kycStatus: r.kycStatus,
+      kycSubmittedAt: r.kycSubmittedAt,
+      idDocumentPath: r.idDocumentUrl,
+    }));
+  }
+}
+
 /** Production repositories backed by Prisma (Supabase Postgres). */
 export function getRepositories(): Repositories {
   return {
@@ -767,5 +884,6 @@ export function getRepositories(): Repositories {
     match: new PrismaMatchRepository(),
     notifications: new PrismaNotificationRepository(),
     profiles: new PrismaProfileRepository(),
+    kyc: new PrismaKycRepository(),
   };
 }
