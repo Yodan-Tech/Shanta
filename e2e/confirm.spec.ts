@@ -11,13 +11,15 @@ test.describe("Receiver confirmation page (/confirm)", () => {
     await expect(page.getByText(/invalid or has expired/i)).toBeVisible();
   });
 
-  test("shows invalid link message for a malformed token", async ({ page }) => {
+  test("shows confirmation buttons when token param is present (idle state)", async ({
+    page,
+  }) => {
     await page.goto("/confirm?token=not-a-real-token");
-    // The page renders initially then calls the API which returns 401
-    // After which the error state is shown
+    // Page starts idle (token present) — shows action buttons before any API call
     await expect(
-      page.getByText(/invalid or has expired|something went wrong/i),
-    ).toBeVisible({ timeout: 10_000 });
+      page.getByRole("button", { name: /yes, i received it/i }),
+    ).toBeVisible();
+    await expect(page.getByText(/report a problem/i)).toBeVisible();
   });
 
   test("confirmation page is mobile-friendly", async ({ page }) => {
