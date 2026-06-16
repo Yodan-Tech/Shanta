@@ -270,6 +270,26 @@ export interface ConfigRepository {
   getNumber(key: string): Promise<number | null>;
 }
 
+// ── KYC ──────────────────────────────────────────────────────────────────────
+
+export interface KycQueueItem {
+  userId: string;
+  phone: string | null;
+  fullName: string | null;
+  kycStatus: string;
+  kycSubmittedAt: Date | null;
+  /** Storage path (NOT a signed URL — callers must sign before returning to clients). */
+  idDocumentPath: string | null;
+}
+
+export interface KycRepository {
+  getStatus(userId: string): Promise<string | null>;
+  submit(input: { userId: string; idDocumentUrl: string }): Promise<void>;
+  approve(input: { userId: string; reviewedBy: string }): Promise<void>;
+  reject(input: { userId: string; reviewedBy: string; reason: string }): Promise<void>;
+  listPending(limit: number): Promise<KycQueueItem[]>;
+}
+
 /** Notification outbox — drain, send, update status. */
 export interface NotificationRepository {
   /** Fetch QUEUED/RETRYING rows with attempts < 3, ordered by createdAt asc. */
@@ -355,4 +375,5 @@ export interface Repositories {
   match: MatchRepository;
   notifications: NotificationRepository;
   profiles: ProfileRepository;
+  kyc: KycRepository;
 }

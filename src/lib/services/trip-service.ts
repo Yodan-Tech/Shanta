@@ -18,6 +18,12 @@ export class TripService {
   constructor(private readonly repos: Repositories) {}
 
   async create(input: CreateTripInput): Promise<TripWithLegs> {
+    const kycStatus = await this.repos.kyc.getStatus(input.travelerId);
+    if (kycStatus !== "VERIFIED") {
+      throw ApiError.forbidden(
+        "Identity verification (KYC) is required before publishing a trip.",
+      );
+    }
     if (input.legs.length === 0) {
       throw ApiError.badRequest("A trip needs at least one leg.");
     }
