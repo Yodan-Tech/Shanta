@@ -2,253 +2,241 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { AppHeader } from "@/components/app-header";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Logo } from "@/components/logo";
+import { LocaleSwitcher } from "@/components/locale-switcher";
 
-interface ItemForm {
-  category: string;
-  description: string;
-  declaredWeightKg: string;
-  declaredValueEtb: string;
-}
-
-const CATEGORIES = [
-  "CLOTHING", "ELECTRONICS", "FOOD", "SPICES", "COFFEE",
-  "DOCUMENTS", "COSMETICS", "JEWELRY", "HOUSEHOLD", "OTHER",
+const ROUTES = [
+  { id: "addis-dawa", from: "Addis Ababa", fromRegion: "AA", to: "Dire Dawa", toRegion: "DD" },
+  { id: "addis-hawassa", from: "Addis Ababa", fromRegion: "AA", to: "Hawassa", toRegion: "SNNPR" },
+  { id: "addis-bahirdar", from: "Addis Ababa", fromRegion: "AA", to: "Bahir Dar", toRegion: "Amhara" },
+  { id: "addis-adama", from: "Addis Ababa", fromRegion: "AA", to: "Adama", toRegion: "Oromia" },
 ];
 
-export default function NewShipmentPage() {
+const calculatePricing = (baseAmount: number = 500) => {
+  const carrierFee = baseAmount;
+  const aggregatorFee = baseAmount * 0.1;
+  const platformFee = baseAmount * 0.05;
+  const insuranceFee = baseAmount * 0.03;
+  const tax = (carrierFee + aggregatorFee + platformFee + insuranceFee) * 0.15;
+  const total = carrierFee + aggregatorFee + platformFee + insuranceFee + tax;
+  return { carrierFee, aggregatorFee, platformFee, insuranceFee, tax, total };
+};
+
+export default function CreateShipmentPage() {
+  const t = useTranslations("shipments");
   const router = useRouter();
+  const [formData, setFormData] = useState({
+    route: "",
+    items: "",
+    receiverPhone: "",
+    receiverName: "",
+    insurance: false,
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [items, setItems] = useState<ItemForm[]>([
-    { category: "CLOTHING", description: "", declaredWeightKg: "", declaredValueEtb: "" },
-  ]);
-  const [form, setForm] = useState({
-    receiverName: "",
-    receiverPhone: "",
-    originRegion: "",
-    destinationRegion: "",
-    insuranceOptedIn: false,
-  });
 
-  function addItem() {
-    setItems((prev) => [
-      ...prev,
-      { category: "CLOTHING", description: "", declaredWeightKg: "", declaredValueEtb: "" },
-    ]);
-  }
+  const pricing = calculatePricing();
 
-  function updateItem(idx: number, field: keyof ItemForm, value: string) {
-    setItems((prev) =>
-      prev.map((it, i) => (i === idx ? { ...it, [field]: value } : it)),
-    );
-  }
-
-  function removeItem(idx: number) {
-    setItems((prev) => prev.filter((_, i) => i !== idx));
-  }
-
-  async function onSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
+
     try {
-      const res = await fetch("/api/v1/shipments", {
+      const selectedRoute = ROUTES.find((r) => r.id === formData.route);
+      if (!selectedRoute) {
+        throw new Error("Invalid route selected");
+      }
+
+      const response = await fetch("/api/v1/shipments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
-          ...form,
-          items: items.map((it) => ({
-            category: it.category,
-            description: it.description,
-            declaredWeightKg: parseFloat(it.declaredWeightKg) || 0,
-            declaredValueEtb: it.declaredValueEtb ? parseFloat(it.declaredValueEtb) : undefined,
-          })),
+          receiverName: formData.receiverName || "Unknown",
+          receiverPhone: formData.receiverPhone,
+          originRegion: selectedRoute.fromRegion,
+          destinationRegion: selectedRoute.toRegion,
+          countryCode: "ET",
+          insuranceOptedIn: formData.insurance,
+          items: [
+            {
+              category: "GENERAL",
+              description: formData.items,
+              declaredWeightKg: 5,
+              declaredValueEtb: pricing.total,
+            },
+          ],
         }),
       });
-      const data = (await res.json()) as { data?: { shipment?: { id: string } }; error?: string };
-      if (!res.ok) {
-        setError(data.error ?? "Failed to create shipment.");
-        return;
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || "Failed to create shipment");
       }
-      const id = data.data?.shipment?.id;
-      router.push(id ? `/shipments/${id}` : "/shipments");
-    } catch {
-      setError("Network error. Please try again.");
+
+      const result = await response.json();
+      const shipmentId = result.data?.id;
+      
+      if (shipmentId) {
+        router.push(`/shipments/${shipmentId}`);
+      } else {
+        router.push("/dashboard?action=send");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <AppHeader />
-      <main className="mx-auto w-full max-w-xl flex-1 px-6 py-8">
-        <h1 className="mb-6 text-xl font-bold">Send a package</h1>
+    <div className="flex min-h-screen flex-col bg-background">
+      <header className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border">
+        <Logo />
+        <LocaleSwitcher />
+      </header>
+      <main className="flex-1 px-4 sm:px-6 py-6 sm:py-8">
+        <div className="w-full max-w-2xl mx-auto">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-1">{t("create")}</h1>
+          <p className="text-sm text-muted mb-6 sm:mb-8">{t("details")}</p>
 
-        <form onSubmit={onSubmit} className="space-y-6">
-          {/* Receiver */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Receiver details</CardTitle>
-              <CardDescription>Who will receive this package?</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="receiverName">Receiver name</Label>
-                <Input
-                  id="receiverName"
+          <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
+            {/* Route Selection */}
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-base sm:text-lg">{t("selectRoute")}</CardTitle>
+              </CardHeader>
+              <div className="px-4 sm:px-6 pb-4 sm:pb-6">
+                <select
+                  value={formData.route}
+                  onChange={(e) => setFormData({ ...formData, route: e.target.value })}
+                  className="w-full px-3 sm:px-4 py-3 sm:py-2.5 text-base border border-border rounded-[var(--radius)] focus:outline-none focus:ring-2 focus:ring-primary bg-white"
                   required
-                  value={form.receiverName}
-                  onChange={(e) => setForm((f) => ({ ...f, receiverName: e.target.value }))}
-                />
+                >
+                  <option value="">Choose a route...</option>
+                  {ROUTES.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.from} {"→"} {r.to}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div>
-                <Label htmlFor="receiverPhone">Receiver phone (+251…)</Label>
-                <Input
-                  id="receiverPhone"
-                  type="tel"
-                  required
-                  placeholder="+2519XXXXXXXX"
-                  value={form.receiverPhone}
-                  onChange={(e) => setForm((f) => ({ ...f, receiverPhone: e.target.value }))}
-                />
-              </div>
-            </CardContent>
-          </Card>
+            </Card>
 
-          {/* Route */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Route</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="origin">From (city)</Label>
-                <Input
-                  id="origin"
-                  required
-                  placeholder="e.g. Addis Ababa"
-                  value={form.originRegion}
-                  onChange={(e) => setForm((f) => ({ ...f, originRegion: e.target.value }))}
-                />
-              </div>
-              <div>
-                <Label htmlFor="destination">To (city)</Label>
-                <Input
-                  id="destination"
-                  required
-                  placeholder="e.g. Hawassa"
-                  value={form.destinationRegion}
-                  onChange={(e) => setForm((f) => ({ ...f, destinationRegion: e.target.value }))}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Items */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Items</CardTitle>
-              <CardDescription>List everything in the package.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {items.map((item, idx) => (
-                <div key={idx} className="rounded-lg border border-border p-3 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Item {idx + 1}</span>
-                    {items.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeItem(idx)}
-                        className="text-xs text-danger hover:underline"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                  <div>
-                    <Label>Category</Label>
-                    <select
-                      className="mt-1 w-full rounded border border-border px-3 py-2 text-sm bg-background"
-                      value={item.category}
-                      onChange={(e) => updateItem(idx, "category", e.target.value)}
-                    >
-                      {CATEGORIES.map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <Label>Description</Label>
-                    <Input
-                      required
-                      placeholder="e.g. 3 cotton shirts"
-                      value={item.description}
-                      onChange={(e) => updateItem(idx, "description", e.target.value)}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label>Weight (kg)</Label>
-                      <Input
-                        type="number"
-                        required
-                        min="0.1"
-                        step="0.1"
-                        placeholder="2.5"
-                        value={item.declaredWeightKg}
-                        onChange={(e) => updateItem(idx, "declaredWeightKg", e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label>Value ETB (optional)</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        placeholder="500"
-                        value={item.declaredValueEtb}
-                        onChange={(e) => updateItem(idx, "declaredValueEtb", e.target.value)}
-                      />
-                    </div>
-                  </div>
+            {/* Items & Receiver */}
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-base sm:text-lg">{t("items")}</CardTitle>
+              </CardHeader>
+              <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name" className="text-sm font-medium">Receiver Name</Label>
+                  <Input
+                    id="name"
+                    type="text"
+                    value={formData.receiverName}
+                    onChange={(e) => setFormData({ ...formData, receiverName: e.target.value })}
+                    placeholder="Full name"
+                    className="h-11 sm:h-10 text-base"
+                    required
+                  />
                 </div>
-              ))}
-              <button
-                type="button"
-                onClick={addItem}
-                className="text-sm text-navy hover:underline"
-              >
-                + Add another item
-              </button>
-            </CardContent>
-          </Card>
+                <div className="space-y-2">
+                  <Label htmlFor="items" className="text-sm font-medium">{t("items")}</Label>
+                  <textarea
+                    id="items"
+                    value={formData.items}
+                    onChange={(e) => setFormData({ ...formData, items: e.target.value })}
+                    placeholder={t("itemsPlaceholder")}
+                    className="w-full px-3 sm:px-4 py-3 sm:py-2.5 text-base border border-border rounded-[var(--radius)] focus:outline-none focus:ring-2 focus:ring-primary h-24 resize-none"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone" className="text-sm font-medium">{t("receiverPhone")}</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    value={formData.receiverPhone}
+                    onChange={(e) => setFormData({ ...formData, receiverPhone: e.target.value })}
+                    placeholder={t("receiverPhonePlaceholder")}
+                    className="h-11 sm:h-10 text-base"
+                    required
+                  />
+                </div>
+                <label className="flex items-start gap-3 cursor-pointer pt-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.insurance}
+                    onChange={(e) => setFormData({ ...formData, insurance: e.target.checked })}
+                    className="h-5 w-5 mt-1 flex-shrink-0"
+                  />
+                  <span>
+                    <span className="font-semibold text-foreground text-sm sm:text-base">{t("insurance")}</span>
+                    <span className="block text-xs sm:text-sm text-muted mt-1">{t("insuranceDesc")}</span>
+                  </span>
+                </label>
+              </div>
+            </Card>
 
-          {/* Insurance */}
-          <label className="flex cursor-pointer items-center gap-3">
-            <input
-              type="checkbox"
-              checked={form.insuranceOptedIn}
-              onChange={(e) => setForm((f) => ({ ...f, insuranceOptedIn: e.target.checked }))}
-              className="h-4 w-4 accent-[var(--color-navy)]"
-            />
-            <span className="text-sm">
-              Add insurance <span className="text-muted">(covers loss or damage)</span>
-            </span>
-          </label>
+            {/* Pricing Breakdown */}
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-base sm:text-lg">{t("pricing")}</CardTitle>
+                <CardDescription className="text-xs sm:text-sm mt-1">Transparent pricing — see exactly what you pay</CardDescription>
+              </CardHeader>
+              <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-2 sm:space-y-3 text-xs sm:text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted">{t("carrierFee")}</span>
+                  <span className="font-semibold">{pricing.carrierFee} Br</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">{t("aggregatorFee")}</span>
+                  <span className="font-semibold">{pricing.aggregatorFee.toFixed(0)} Br</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">{t("platformFee")}</span>
+                  <span className="font-semibold">{pricing.platformFee.toFixed(0)} Br</span>
+                </div>
+                {formData.insurance && (
+                  <div className="flex justify-between">
+                    <span className="text-muted">{t("insuranceFee")}</span>
+                    <span className="font-semibold">{pricing.insuranceFee.toFixed(0)} Br</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-muted">{t("tax")}</span>
+                  <span className="font-semibold">{pricing.tax.toFixed(0)} Br</span>
+                </div>
+                <div className="border-t border-border pt-2 sm:pt-3 flex justify-between">
+                  <span className="font-semibold text-foreground">{t("total")}</span>
+                  <span className="text-base sm:text-lg font-bold text-primary">
+                    {pricing.total.toFixed(0)} Br
+                  </span>
+                </div>
+              </div>
+            </Card>
 
-          {error && (
-            <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-danger">{error}</p>
-          )}
+            {/* Error */}
+            {error && <div className="bg-red-50 border border-danger rounded-[var(--radius)] p-3 sm:p-4 text-danger text-xs sm:text-sm">{error}</div>}
 
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Creating shipment…" : "Create shipment"}
-          </Button>
-        </form>
+            {/* Submit */}
+            <Button
+              type="submit"
+              size="lg"
+              disabled={loading || !formData.route}
+              className="w-full h-12 sm:h-11 text-base font-semibold bg-primary text-primary-foreground hover:bg-navy-900"
+            >
+              {loading ? t("creating") : t("submit")}
+            </Button>
+          </form>
+        </div>
       </main>
     </div>
   );

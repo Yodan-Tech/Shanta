@@ -2,11 +2,20 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { AppHeader } from "@/components/app-header";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Logo } from "@/components/logo";
+import { LocaleSwitcher } from "@/components/locale-switcher";
+
+const ROUTES = [
+  { id: "addis-dawa", from: "Addis Ababa", fromRegion: "AA", to: "Dire Dawa", toRegion: "DD" },
+  { id: "addis-hawassa", from: "Addis Ababa", fromRegion: "AA", to: "Hawassa", toRegion: "SNNPR" },
+  { id: "addis-bahirdar", from: "Addis Ababa", fromRegion: "AA", to: "Bahir Dar", toRegion: "Amhara" },
+  { id: "addis-adama", from: "Addis Ababa", fromRegion: "AA", to: "Adama", toRegion: "Oromia" },
+];
 
 const MODES = [
   { value: "FLIGHT", label: "Flight" },
@@ -15,154 +24,191 @@ const MODES = [
   { value: "OTHER", label: "Other" },
 ];
 
-export default function NewTripPage() {
+export default function CreateTripPage() {
+  const t = useTranslations("trips");
   const router = useRouter();
+  const [formData, setFormData] = useState({
+    route: "",
+    mode: "ROAD",
+    departure: "",
+    capacity: "",
+    notes: "",
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    mode: "FLIGHT",
-    originRegion: "",
-    destinationRegion: "",
-    departAt: "",
-    totalCapacityKg: "",
-  });
 
-  async function onSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
+
     try {
-      const res = await fetch("/api/v1/trips", {
+      const selectedRoute = ROUTES.find((r) => r.id === formData.route);
+      if (!selectedRoute || !formData.departure || !formData.capacity) {
+        throw new Error("Please fill in all required fields");
+      }
+
+      const response = await fetch("/api/v1/trips", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
-          mode: form.mode,
+          mode: formData.mode,
           countryCode: "ET",
           legs: [
             {
               sequence: 1,
-              originRegion: form.originRegion,
-              destinationRegion: form.destinationRegion,
-              departAt: new Date(form.departAt).toISOString(),
-              totalCapacityKg: parseFloat(form.totalCapacityKg),
+              originRegion: selectedRoute.fromRegion,
+              destinationRegion: selectedRoute.toRegion,
+              departAt: new Date(formData.departure).toISOString(),
+              totalCapacityKg: parseInt(formData.capacity),
             },
           ],
         }),
       });
-      const data = (await res.json()) as { data?: { id?: string }; error?: string };
-      if (!res.ok) {
-        setError(data.error ?? "Failed to create trip.");
-        return;
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || "Failed to create trip");
       }
+
       router.push("/trips");
-    } catch {
-      setError("Network error. Please try again.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <AppHeader />
-      <main className="mx-auto w-full max-w-lg flex-1 px-6 py-8">
-        <h1 className="mb-6 text-xl font-bold">Register your trip</h1>
+    <div className="flex min-h-screen flex-col bg-background">
+      <header className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border">
+        <Logo />
+        <LocaleSwitcher />
+      </header>
+      <main className="flex-1 px-4 sm:px-6 py-6 sm:py-8">
+        <div className="w-full max-w-2xl mx-auto">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-1">{t("create")}</h1>
+          <p className="text-sm text-muted mb-6 sm:mb-8">{t("details")}</p>
 
-        <form onSubmit={onSubmit} className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Trip details</CardTitle>
-              <CardDescription>
-                You must have identity verification (KYC) to publish a trip.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>Transport mode</Label>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {MODES.map((m) => (
-                    <label
-                      key={m.value}
-                      className={`flex cursor-pointer items-center gap-2 rounded-full border px-4 py-2 text-sm ${
-                        form.mode === m.value
-                          ? "border-navy bg-navy text-white"
-                          : "border-border hover:bg-surface"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="mode"
-                        value={m.value}
-                        checked={form.mode === m.value}
-                        onChange={() => setForm((f) => ({ ...f, mode: m.value }))}
-                        className="sr-only"
-                      />
-                      {m.label}
-                    </label>
+          <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
+            {/* Route Selection */}
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-base sm:text-lg">{t("route")}</CardTitle>
+              </CardHeader>
+              <div className="px-4 sm:px-6 pb-4 sm:pb-6">
+                <select
+                  value={formData.route}
+                  onChange={(e) => setFormData({ ...formData, route: e.target.value })}
+                  className="w-full px-3 sm:px-4 py-3 sm:py-2.5 text-base border border-border rounded-[var(--radius)] focus:outline-none focus:ring-2 focus:ring-primary bg-white"
+                  required
+                >
+                  <option value="">Choose your route...</option>
+                  {ROUTES.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.from} {"→"} {r.to}
+                    </option>
                   ))}
+                </select>
+              </div>
+            </Card>
+
+            {/* Trip Details */}
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-base sm:text-lg">Travel Details</CardTitle>
+              </CardHeader>
+              <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="mode" className="text-sm font-medium">Transport Mode</Label>
+                  <select
+                    id="mode"
+                    value={formData.mode}
+                    onChange={(e) => setFormData({ ...formData, mode: e.target.value })}
+                    className="w-full px-3 sm:px-4 py-3 sm:py-2.5 text-base border border-border rounded-[var(--radius)] focus:outline-none focus:ring-2 focus:ring-primary bg-white"
+                  >
+                    {MODES.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="departure" className="text-sm font-medium">{t("departure")}</Label>
+                  <Input
+                    id="departure"
+                    type="date"
+                    value={formData.departure}
+                    onChange={(e) => setFormData({ ...formData, departure: e.target.value })}
+                    className="h-11 sm:h-10 text-base"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="capacity" className="text-sm font-medium">{t("capacity")}</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="capacity"
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={formData.capacity}
+                      onChange={(e) => setFormData({ ...formData, capacity: e.target.value })}
+                      placeholder="20"
+                      className="flex-1 h-11 sm:h-10 text-base"
+                      required
+                    />
+                    <div className="flex items-center px-3 sm:px-4 bg-surface border border-border rounded-[var(--radius)] text-xs sm:text-sm text-muted font-medium whitespace-nowrap">
+                      {t("capacityUnit")}
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="notes" className="text-sm font-medium">{t("notes")}</Label>
+                  <textarea
+                    id="notes"
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    placeholder={t("notesPlaceholder")}
+                    className="w-full px-3 sm:px-4 py-3 sm:py-2.5 text-base border border-border rounded-[var(--radius)] focus:outline-none focus:ring-2 focus:ring-primary h-20 resize-none"
+                  />
                 </div>
               </div>
+            </Card>
 
-              <div>
-                <Label htmlFor="origin">Departing from</Label>
-                <Input
-                  id="origin"
-                  required
-                  placeholder="e.g. Addis Ababa"
-                  value={form.originRegion}
-                  onChange={(e) => setForm((f) => ({ ...f, originRegion: e.target.value }))}
-                />
+            {/* Info Card */}
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-base sm:text-lg">How it works</CardTitle>
+              </CardHeader>
+              <div className="px-4 sm:px-6 pb-4 sm:pb-6 text-xs sm:text-sm text-muted space-y-1.5 sm:space-y-2">
+                <p>1. Publish your trip and capacity</p>
+                <p>2. Review and accept shipments matching your route</p>
+                <p>3. Receive items at hub, verify contents, deliver</p>
+                <p>4. Confirm delivery with photo from receiver</p>
               </div>
+            </Card>
 
-              <div>
-                <Label htmlFor="dest">Arriving at</Label>
-                <Input
-                  id="dest"
-                  required
-                  placeholder="e.g. Dire Dawa"
-                  value={form.destinationRegion}
-                  onChange={(e) => setForm((f) => ({ ...f, destinationRegion: e.target.value }))}
-                />
+            {/* Error */}
+            {error && (
+              <div className="bg-red-50 border border-danger rounded-[var(--radius)] p-3 sm:p-4 text-danger text-xs sm:text-sm">
+                {error}
               </div>
+            )}
 
-              <div>
-                <Label htmlFor="depart">Departure date and time</Label>
-                <Input
-                  id="depart"
-                  type="datetime-local"
-                  required
-                  value={form.departAt}
-                  onChange={(e) => setForm((f) => ({ ...f, departAt: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="capacity">Available luggage capacity (kg)</Label>
-                <Input
-                  id="capacity"
-                  type="number"
-                  required
-                  min="0.5"
-                  step="0.5"
-                  placeholder="10"
-                  value={form.totalCapacityKg}
-                  onChange={(e) => setForm((f) => ({ ...f, totalCapacityKg: e.target.value }))}
-                />
-                <p className="mt-1 text-xs text-muted">
-                  Be honest — you will carry this weight on your body through customs.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {error && (
-            <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-danger">{error}</p>
-          )}
-
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Registering trip…" : "Register trip"}
-          </Button>
-        </form>
+            {/* Submit */}
+            <Button
+              type="submit"
+              size="lg"
+              disabled={loading || !formData.route || !formData.departure || !formData.capacity}
+              className="w-full h-12 sm:h-11 text-base font-semibold bg-primary text-primary-foreground hover:bg-navy-900"
+            >
+              {loading ? t("publishing") : t("publish")}
+            </Button>
+          </form>
+        </div>
       </main>
     </div>
   );

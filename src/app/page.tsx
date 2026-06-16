@@ -4,11 +4,6 @@ import { Logo } from "@/components/logo";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { Button } from "@/components/ui/button";
 
-/**
- * Landing page — action-first entry. Two big buttons drive the happy path:
- * "Send a Package" and "I'm Traveling with Space." No role selection upfront —
- * the button click IS the role choice. Hub operators access via the footer link.
- */
 export default function Home() {
   const t = useTranslations("landing");
   const tb = useTranslations("brand");
@@ -20,53 +15,47 @@ export default function Home() {
         <LocaleSwitcher />
       </header>
 
-      <main className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-        <div className="max-w-2xl">
-          <p className="mb-4 text-sm font-semibold uppercase tracking-widest text-amber-600">
+      <main className="flex flex-1 flex-col items-center justify-center px-4 sm:px-6 py-8 sm:py-12 text-center">
+        <div className="w-full max-w-lg">
+          <p className="mb-3 sm:mb-4 text-xs sm:text-sm font-semibold uppercase tracking-widest text-amber-600">
             {tb("tagline")}
           </p>
-          <h1 className="text-4xl font-bold leading-tight tracking-tight text-foreground sm:text-5xl">
+          <h1 className="text-2xl sm:text-4xl font-bold leading-tight tracking-tight text-foreground">
             {t("headline")}
           </h1>
-          <p className="mx-auto mt-5 max-w-xl text-base text-muted sm:text-lg">
+          <p className="mx-auto mt-4 sm:mt-5 text-sm sm:text-base text-muted">
             {t("subhead")}
           </p>
 
-          {/* Two primary actions */}
-          <div className="mt-12 flex flex-col gap-4 sm:flex-row max-w-xl mx-auto">
-            <Link href="/login?action=send" className="flex-1">
-              <Button
-                size="lg"
-                className="w-full h-16 text-lg font-semibold rounded-lg"
-              >
+          {/* Two Big Action Buttons */}
+          <div className="mt-8 sm:mt-12 flex flex-col gap-3 sm:gap-4">
+            <Link href="/login?action=send" className="w-full">
+              <Button size="lg" className="w-full h-14 sm:h-16 text-base sm:text-lg font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-navy-900">
                 {t("sendPackage")}
               </Button>
             </Link>
-            <Link href="/login?action=travel" className="flex-1">
+            <Link href="/login?action=travel" className="w-full">
               <Button
                 size="lg"
                 variant="outline"
-                className="w-full h-16 text-lg font-semibold rounded-lg border-2"
+                className="w-full h-14 sm:h-16 text-base sm:text-lg font-semibold rounded-lg border-2 border-primary text-primary hover:bg-surface"
               >
                 {t("travelWithSpace")}
               </Button>
             </Link>
           </div>
 
-          {/* Hub operator entry — subtle, not primary */}
-          <div className="mt-10 text-center">
-            <p className="text-sm text-muted">{t("hubLoginHint")}</p>
-            <Link
-              href="/hub/login"
-              className="mt-1 inline-block text-sm font-medium text-navy hover:underline"
-            >
-              {t("hubLogin")} →
+          {/* Subtle Hub Login Link */}
+          <div className="mt-8 sm:mt-10 text-center">
+            <p className="text-xs sm:text-sm text-muted mb-2">{t("hubLoginHint")}</p>
+            <Link href="/hub/login" className="text-xs sm:text-sm font-medium text-primary hover:underline">
+              {t("hubLogin")}
             </Link>
           </div>
         </div>
       </main>
 
-      <footer className="border-t border-border px-6 py-6 text-center text-xs text-muted">
+      <footer className="px-4 sm:px-6 py-4 sm:py-6 text-center text-xs text-muted border-t border-border">
         {tb("promise")}
       </footer>
     </div>

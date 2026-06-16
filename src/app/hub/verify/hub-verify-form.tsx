@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -15,11 +15,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export function VerifyForm({ phone }: { phone: string }) {
+export function HubVerifyForm({ phone }: { phone: string }) {
   const t = useTranslations("auth");
+  const th = useTranslations("hub");
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const action = searchParams.get("action"); // 'send' or 'travel'
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -42,21 +41,16 @@ export function VerifyForm({ phone }: { phone: string }) {
       return;
     }
 
-    // If action was passed from landing, go directly to dashboard with action param
-    // Otherwise, go to action chooser
-    if (action === "send" || action === "travel") {
-      router.push(`/dashboard?action=${action}`);
-    } else {
-      router.push("/onboarding");
-    }
+    // Hub operators go to hub dashboard
+    router.push("/hub/dashboard");
     router.refresh();
   }
 
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
-        <CardTitle>{t("otpTitle")}</CardTitle>
-        <CardDescription>{t("otpSubtitle", { phone })}</CardDescription>
+        <CardTitle>{th("verifyTitle")}</CardTitle>
+        <CardDescription>{th("verifySubtitle", { phone })}</CardDescription>
       </CardHeader>
       <form onSubmit={onSubmit} className="space-y-4">
         <div>
@@ -80,7 +74,7 @@ export function VerifyForm({ phone }: { phone: string }) {
           {loading ? "…" : t("verify")}
         </Button>
         <div className="flex justify-between text-sm">
-          <Link href="/login" className="text-muted hover:text-primary">
+          <Link href="/hub/login" className="text-muted hover:text-primary">
             {t("changeNumber")}
           </Link>
         </div>
