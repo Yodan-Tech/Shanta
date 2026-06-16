@@ -60,8 +60,8 @@ export default function HubLoginPage() {
       <main className="flex flex-1 items-center justify-center px-6">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>{th("loginTitle", "Hub Operator Login")}</CardTitle>
-            <CardDescription>{th("loginSubtitle", "Enter your phone number to continue.")}</CardDescription>
+            <CardTitle>{th("loginTitle")}</CardTitle>
+            <CardDescription>{th("loginSubtitle")}</CardDescription>
           </CardHeader>
           <form onSubmit={onSubmit} className="space-y-4">
             <div>

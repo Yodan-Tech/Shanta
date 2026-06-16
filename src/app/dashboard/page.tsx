@@ -77,32 +77,30 @@ export default async function DashboardPage({
     );
   }
 
-  // Traveler dashboard
-  if (action === "travel") {
-    return (
-      <div className="flex min-h-screen flex-col bg-background">
-        <AppHeader />
-        <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-10">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">{t("travelWithSpace")}</h1>
-              <p className="mt-1 text-sm text-muted">{t("myTrips")}</p>
-            </div>
-            <Link href="/trips/new">
-              <Button className="bg-accent text-accent-foreground hover:bg-amber-600">{t("createNew")}</Button>
-            </Link>
+  // Traveler dashboard (default case)
+  return (
+    <div className="flex min-h-screen flex-col bg-background">
+      <AppHeader />
+      <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-10">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">{t("travelWithSpace")}</h1>
+            <p className="mt-1 text-sm text-muted">{t("myTrips")}</p>
           </div>
+          <Link href="/trips/new">
+            <Button className="bg-accent text-accent-foreground hover:bg-amber-600">{t("createNew")}</Button>
+          </Link>
+        </div>
 
-          <div className="mt-8">
-            <Card>
-              <CardHeader>
-                <CardTitle>No trips published yet</CardTitle>
-                <CardDescription>Create a trip to see available packages</CardDescription>
-              </CardHeader>
-            </Card>
-          </div>
-        </main>
-      </div>
-    );
-  }
+        <div className="mt-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>No trips published yet</CardTitle>
+              <CardDescription>Create a trip to see available packages</CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </main>
+    </div>
+  );
 }
