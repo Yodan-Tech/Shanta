@@ -30,10 +30,15 @@ export default defineConfig({
       testMatch: ["**/smoke.spec.ts", "**/confirm.spec.ts"],
     },
   ],
-  webServer: {
-    command: "pnpm dev",
-    url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
-  },
+  // When PLAYWRIGHT_BASE_URL is set (CI smoke step starts app manually, staging
+  // runs against a deployed URL), skip the webServer — the server is already up.
+  // Without it, Playwright auto-starts `pnpm dev` for local development.
+  webServer: process.env.PLAYWRIGHT_BASE_URL
+    ? undefined
+    : {
+        command: "pnpm dev",
+        url: "http://localhost:3000",
+        reuseExistingServer: true,
+        timeout: 60_000,
+      },
 });
