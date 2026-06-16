@@ -21,24 +21,24 @@ export default async function DashboardPage({
     return (
       <div className="flex min-h-screen flex-col bg-background">
         <AppHeader />
-        <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-10">
-          <h1 className="text-2xl font-bold text-foreground">{t("welcome")}</h1>
-          <p className="mt-2 text-sm text-muted">Pick what you&apos;d like to do today</p>
+        <main className="mx-auto w-full max-w-4xl flex-1 px-4 sm:px-6 py-6 sm:py-10">
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground">{t("welcome")}</h1>
+          <p className="mt-1 sm:mt-2 text-xs sm:text-sm text-muted">Pick what you&apos;d like to do today</p>
 
-          <div className="mt-8 grid gap-4 sm:grid-cols-2">
+          <div className="mt-6 sm:mt-8 grid gap-3 sm:gap-4 sm:grid-cols-2">
             <Link href="/dashboard?action=send">
               <Card className="cursor-pointer hover:shadow-md transition-shadow h-full">
                 <CardHeader>
-                  <CardTitle className="text-primary">{t("sendPackage")}</CardTitle>
-                  <CardDescription>{t("sendPackageDesc")}</CardDescription>
+                  <CardTitle className="text-base sm:text-lg text-primary">{t("sendPackage")}</CardTitle>
+                  <CardDescription className="text-xs sm:text-sm">{t("sendPackageDesc")}</CardDescription>
                 </CardHeader>
               </Card>
             </Link>
             <Link href="/dashboard?action=travel">
               <Card className="cursor-pointer hover:shadow-md transition-shadow h-full">
                 <CardHeader>
-                  <CardTitle className="text-primary">{t("travelWithSpace")}</CardTitle>
-                  <CardDescription>{t("travelWithSpaceDesc")}</CardDescription>
+                  <CardTitle className="text-base sm:text-lg text-primary">{t("travelWithSpace")}</CardTitle>
+                  <CardDescription className="text-xs sm:text-sm">{t("travelWithSpaceDesc")}</CardDescription>
                 </CardHeader>
               </Card>
             </Link>
@@ -53,22 +53,22 @@ export default async function DashboardPage({
     return (
       <div className="flex min-h-screen flex-col bg-background">
         <AppHeader />
-        <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-10">
-          <div className="flex items-center justify-between">
+        <main className="mx-auto w-full max-w-4xl flex-1 px-4 sm:px-6 py-6 sm:py-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-0">
             <div>
-              <h1 className="text-2xl font-bold text-foreground">{t("sendPackage")}</h1>
-              <p className="mt-1 text-sm text-muted">{t("myItems")}</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground">{t("sendPackage")}</h1>
+              <p className="mt-1 text-xs sm:text-sm text-muted">{t("myItems")}</p>
             </div>
             <Link href="/shipments/new">
-              <Button className="bg-accent text-accent-foreground hover:bg-amber-600">{t("createNew")}</Button>
+              <Button className="w-full sm:w-auto bg-accent text-accent-foreground hover:bg-amber-600 h-11 sm:h-auto text-sm sm:text-base">{t("createNew")}</Button>
             </Link>
           </div>
 
-          <div className="mt-8">
+          <div className="mt-6 sm:mt-8">
             <Card>
               <CardHeader>
-                <CardTitle>No shipments yet</CardTitle>
-                <CardDescription>Create your first shipment to get started</CardDescription>
+                <CardTitle className="text-base sm:text-lg">No shipments yet</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">Create your first shipment to get started</CardDescription>
               </CardHeader>
             </Card>
           </div>
@@ -81,22 +81,22 @@ export default async function DashboardPage({
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <AppHeader />
-      <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-10">
-        <div className="flex items-center justify-between">
+      <main className="mx-auto w-full max-w-4xl flex-1 px-4 sm:px-6 py-6 sm:py-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-0">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">{t("travelWithSpace")}</h1>
-            <p className="mt-1 text-sm text-muted">{t("myTrips")}</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground">{t("travelWithSpace")}</h1>
+            <p className="mt-1 text-xs sm:text-sm text-muted">{t("myTrips")}</p>
           </div>
           <Link href="/trips/new">
-            <Button className="bg-accent text-accent-foreground hover:bg-amber-600">{t("createNew")}</Button>
+            <Button className="w-full sm:w-auto bg-accent text-accent-foreground hover:bg-amber-600 h-11 sm:h-auto text-sm sm:text-base">{t("createNew")}</Button>
           </Link>
         </div>
 
-        <div className="mt-8">
+        <div className="mt-6 sm:mt-8">
           <Card>
             <CardHeader>
-              <CardTitle>No trips published yet</CardTitle>
-              <CardDescription>Create a trip to see available packages</CardDescription>
+              <CardTitle className="text-base sm:text-lg">No trips published yet</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">Create a trip to see available packages</CardDescription>
             </CardHeader>
           </Card>
         </div>

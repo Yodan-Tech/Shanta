@@ -56,26 +56,26 @@ export default function CreateShipmentPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <header className="flex items-center justify-between px-6 py-4 border-b border-border">
+      <header className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border">
         <Logo />
         <LocaleSwitcher />
       </header>
-      <main className="flex-1 px-6 py-10">
-        <div className="max-w-2xl mx-auto">
-          <h1 className="text-3xl font-bold text-foreground mb-2">{t("create")}</h1>
-          <p className="text-muted mb-8">{t("details")}</p>
+      <main className="flex-1 px-4 sm:px-6 py-6 sm:py-8">
+        <div className="w-full max-w-2xl mx-auto">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-1">{t("create")}</h1>
+          <p className="text-sm text-muted mb-6 sm:mb-8">{t("details")}</p>
 
-          <form onSubmit={handleSubmit} className="space-y-8">
+          <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
             {/* Route Selection */}
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">{t("selectRoute")}</CardTitle>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-base sm:text-lg">{t("selectRoute")}</CardTitle>
               </CardHeader>
-              <div className="px-6 pb-6">
+              <div className="px-4 sm:px-6 pb-4 sm:pb-6">
                 <select
                   value={formData.route}
                   onChange={(e) => setFormData({ ...formData, route: e.target.value })}
-                  className="w-full px-4 py-3 border border-border rounded-[var(--radius)] focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full px-3 sm:px-4 py-3 sm:py-2.5 text-base border border-border rounded-[var(--radius)] focus:outline-none focus:ring-2 focus:ring-primary bg-white"
                   required
                 >
                   <option value="">Choose a route...</option>
@@ -90,42 +90,43 @@ export default function CreateShipmentPage() {
 
             {/* Items & Receiver */}
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">{t("items")}</CardTitle>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-base sm:text-lg">{t("items")}</CardTitle>
               </CardHeader>
-              <div className="px-6 pb-6 space-y-4">
-                <div>
-                  <Label htmlFor="items">{t("items")}</Label>
+              <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="items" className="text-sm font-medium">{t("items")}</Label>
                   <textarea
                     id="items"
                     value={formData.items}
                     onChange={(e) => setFormData({ ...formData, items: e.target.value })}
                     placeholder={t("itemsPlaceholder")}
-                    className="w-full px-4 py-3 border border-border rounded-[var(--radius)] focus:outline-none focus:ring-2 focus:ring-primary h-24"
+                    className="w-full px-3 sm:px-4 py-3 sm:py-2.5 text-base border border-border rounded-[var(--radius)] focus:outline-none focus:ring-2 focus:ring-primary h-24 resize-none"
                     required
                   />
                 </div>
-                <div>
-                  <Label htmlFor="phone">{t("receiverPhone")}</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="phone" className="text-sm font-medium">{t("receiverPhone")}</Label>
                   <Input
                     id="phone"
                     type="tel"
                     value={formData.receiverPhone}
                     onChange={(e) => setFormData({ ...formData, receiverPhone: e.target.value })}
                     placeholder={t("receiverPhonePlaceholder")}
+                    className="h-11 sm:h-10 text-base"
                     required
                   />
                 </div>
-                <label className="flex items-center gap-3 cursor-pointer">
+                <label className="flex items-start gap-3 cursor-pointer pt-2">
                   <input
                     type="checkbox"
                     checked={formData.insurance}
                     onChange={(e) => setFormData({ ...formData, insurance: e.target.checked })}
-                    className="h-4 w-4"
+                    className="h-5 w-5 mt-1 flex-shrink-0"
                   />
                   <span>
-                    <span className="font-semibold text-foreground">{t("insurance")}</span>
-                    <span className="block text-sm text-muted">{t("insuranceDesc")}</span>
+                    <span className="font-semibold text-foreground text-sm sm:text-base">{t("insurance")}</span>
+                    <span className="block text-xs sm:text-sm text-muted mt-1">{t("insuranceDesc")}</span>
                   </span>
                 </label>
               </div>
@@ -133,11 +134,11 @@ export default function CreateShipmentPage() {
 
             {/* Pricing Breakdown */}
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">{t("pricing")}</CardTitle>
-                <CardDescription>Transparent pricing — see exactly what you pay</CardDescription>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-base sm:text-lg">{t("pricing")}</CardTitle>
+                <CardDescription className="text-xs sm:text-sm mt-1">Transparent pricing — see exactly what you pay</CardDescription>
               </CardHeader>
-              <div className="px-6 pb-6 space-y-3 text-sm">
+              <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-2 sm:space-y-3 text-xs sm:text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted">{t("carrierFee")}</span>
                   <span className="font-semibold">{pricing.carrierFee} Br</span>
@@ -160,9 +161,9 @@ export default function CreateShipmentPage() {
                   <span className="text-muted">{t("tax")}</span>
                   <span className="font-semibold">{pricing.tax.toFixed(0)} Br</span>
                 </div>
-                <div className="border-t border-border pt-3 flex justify-between">
+                <div className="border-t border-border pt-2 sm:pt-3 flex justify-between">
                   <span className="font-semibold text-foreground">{t("total")}</span>
-                  <span className="text-lg font-bold text-primary">
+                  <span className="text-base sm:text-lg font-bold text-primary">
                     {pricing.total.toFixed(0)} Br
                   </span>
                 </div>
@@ -170,14 +171,14 @@ export default function CreateShipmentPage() {
             </Card>
 
             {/* Error */}
-            {error && <div className="bg-red-50 border border-danger rounded-[var(--radius)] p-4 text-danger text-sm">{error}</div>}
+            {error && <div className="bg-red-50 border border-danger rounded-[var(--radius)] p-3 sm:p-4 text-danger text-xs sm:text-sm">{error}</div>}
 
             {/* Submit */}
             <Button
               type="submit"
               size="lg"
               disabled={loading || !formData.route}
-              className="w-full bg-primary text-primary-foreground hover:bg-navy-900"
+              className="w-full h-12 sm:h-11 text-base font-semibold bg-primary text-primary-foreground hover:bg-navy-900"
             >
               {loading ? t("creating") : t("submit")}
             </Button>
