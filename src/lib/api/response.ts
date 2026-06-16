@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { toApiError } from "./errors";
+import { log } from "@/lib/logger";
 
 /**
  * Consistent response envelope for all /api/v1 routes (the contract the UI binds to):
@@ -18,8 +19,12 @@ export function created<T>(data: T): NextResponse {
 export function fail(err: unknown, correlationId: string): NextResponse {
   const apiError = toApiError(err);
   if (apiError.code === "INTERNAL") {
-    // Surface server faults in logs; clients only get a generic message.
-    console.error(`[${correlationId}]`, err);
+    // Structured log for Vercel log drains.
+    // Wire Sentry: install @sentry/nextjs, set SENTRY_DSN, and call
+    // Sentry.captureException(err) here before the log line.
+    log(correlationId, "error", "Unhandled server error", {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
   return NextResponse.json(
     {
