@@ -41,3 +41,10 @@ export function CardDescription({
 }: React.HTMLAttributes<HTMLParagraphElement>) {
   return <p className={cn("text-sm text-muted", className)} {...props} />;
 }
+
+export function CardContent({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn("pt-0", className)} {...props} />;
+}
