@@ -2,7 +2,14 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { publicEnv } from "@/lib/env";
 
-const PUBLIC_PATHS = ["/", "/login", "/verify", "/auth"];
+const PUBLIC_PATHS = [
+  "/",
+  "/login",
+  "/verify",
+  "/auth",
+  "/confirm",      // Receiver delivery confirmation — no login (SMS token flow)
+  "/hub/login",    // Hub operator login entry point
+];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some(
