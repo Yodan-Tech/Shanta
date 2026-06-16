@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { isValidPhone } from "@/lib/validators";
@@ -17,11 +17,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export default function LoginPage() {
+export default function HubLoginPage() {
   const t = useTranslations("auth");
+  const th = useTranslations("hub");
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const action = searchParams.get("action"); // 'send' or 'travel' passed from landing
   const [phone, setPhone] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -49,11 +48,7 @@ export default function LoginPage() {
       return;
     }
 
-    // Preserve action param if it came from landing page
-    const verifyUrl = action
-      ? `/verify?phone=${encodeURIComponent(phone)}&action=${action}`
-      : `/verify?phone=${encodeURIComponent(phone)}`;
-    router.push(verifyUrl);
+    router.push(`/hub/verify?phone=${encodeURIComponent(phone)}`);
   }
 
   return (
@@ -65,8 +60,8 @@ export default function LoginPage() {
       <main className="flex flex-1 items-center justify-center px-6">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>{t("phoneTitle")}</CardTitle>
-            <CardDescription>{t("phoneSubtitle")}</CardDescription>
+            <CardTitle>{th("loginTitle", "Hub Operator Login")}</CardTitle>
+            <CardDescription>{th("loginSubtitle", "Enter your phone number to continue.")}</CardDescription>
           </CardHeader>
           <form onSubmit={onSubmit} className="space-y-4">
             <div>

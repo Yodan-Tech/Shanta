@@ -16,8 +16,10 @@
   "landing": {
     "headline": "Send what matters through people you can trust",
     "subhead": "Shanta connects senders with trusted travelers who have spare luggage space — with verified handoffs and escrow built in.",
-    "getStarted": "Get started",
-    "signIn": "Sign in"
+    "sendPackage": "Send a Package",
+    "travelWithSpace": "I'm Traveling with Space",
+    "hubLogin": "Hub login",
+    "hubLoginHint": "Are you a hub operator?"
   },
   "auth": {
     "phoneTitle": "Sign in to Shanta",
@@ -36,27 +38,93 @@
     "errorRateLimited": "Too many attempts. Please wait a while before trying again."
   },
   "onboarding": {
-    "title": "How will you use Shanta?",
-    "subtitle": "You can do more than one — and change this later.",
-    "sender": "Send items",
-    "senderDesc": "I have something to send to another city.",
-    "traveler": "Carry items",
-    "travelerDesc": "I'm travelling and have spare luggage space.",
-    "aggregator": "Run a hub",
-    "aggregatorDesc": "I operate a drop-off / consolidation point.",
-    "save": "Save and continue"
+    "title": "What do you want to do?",
+    "subtitle": "Pick an action to get started. You can switch between send and travel anytime.",
+    "sendTitle": "Send a Package",
+    "sendDesc": "I have something to send to another city.",
+    "travelTitle": "Carry Items",
+    "travelDesc": "I'm travelling and have spare luggage space.",
+    "choose": "Choose",
+    "sending": "You're set up to send",
+    "traveling": "You're set up to travel"
   },
   "dashboard": {
     "welcome": "Welcome to Shanta",
-    "sender": "Sender dashboard",
-    "traveler": "Traveler dashboard",
-    "aggregator": "Hub dashboard",
-    "comingSoon": "Your tools will appear here as we build out Phase 1.",
-    "yourRoles": "Your roles"
+    "sender": "Sender",
+    "sendPackage": "Send a Package",
+    "sendPackageDesc": "Create and manage your shipments",
+    "traveler": "Traveler",
+    "travelWithSpace": "Travel with Space",
+    "travelWithSpaceDesc": "Publish trips and deliver packages",
+    "aggregator": "Hub",
+    "comingSoon": "Coming soon",
+    "yourRoles": "Your roles",
+    "createNew": "Create New",
+    "myItems": "My Items",
+    "myTrips": "My Trips",
+    "recentActivity": "Recent Activity"
   },
   "admin": {
     "title": "Shanta Admin",
     "restricted": "Restricted area",
     "noAccess": "You don't have access to the admin area."
+  },
+  "shipments": {
+    "create": "Create Shipment",
+    "details": "Shipment Details",
+    "from": "Sending from",
+    "to": "Sending to",
+    "selectRoute": "Select route",
+    "items": "What are you sending?",
+    "itemsPlaceholder": "Describe the items (e.g., clothes, books)",
+    "receiverPhone": "Receiver phone number",
+    "receiverPhonePlaceholder": "+251XXXXXXXX",
+    "insurance": "Add insurance?",
+    "insuranceDesc": "Protect your shipment (3% of value)",
+    "pricing": "Pricing",
+    "carrierFee": "Carrier fee",
+    "aggregatorFee": "Aggregator fee",
+    "platformFee": "Platform fee",
+    "insuranceFee": "Insurance premium",
+    "tax": "Tax",
+    "total": "Total",
+    "submit": "Create Shipment",
+    "creating": "Creating..."
+  },
+  "trips": {
+    "create": "Publish a Trip",
+    "details": "Trip Details",
+    "route": "Which cities are you traveling to?",
+    "selectRoute": "Select your route",
+    "departure": "Departure date",
+    "capacity": "Available capacity",
+    "capacityUnit": "kg",
+    "notes": "Notes for senders",
+    "notesPlaceholder": "E.g., fragile items ok, can accommodate small packages",
+    "publish": "Publish Trip",
+    "publishing": "Publishing...",
+    "kyc": "ID Verification Required",
+    "kycDesc": "Please verify your identity before publishing trips"
+  },
+  "confirm": {
+    "title": "Confirm Delivery",
+    "subtitle": "Your package has arrived",
+    "from": "From",
+    "to": "To",
+    "description": "Description",
+    "takeLivePhoto": "Take a photo to confirm",
+    "photoRequired": "Photo confirmation required",
+    "confirm": "Confirm Receipt",
+    "problem": "Report a Problem",
+    "problemDesc": "Is the package damaged or seal broken?",
+    "success": "Delivery confirmed",
+    "error": "Could not confirm delivery"
+  },
+    "loginTitle": "Hub Operator Login",
+    "loginSubtitle": "Enter your phone number to continue.",
+    "verifyTitle": "Verify your identity",
+    "verifySubtitle": "We sent a 6-digit code to {phone}.",
+    "dashboardTitle": "Hub Dashboard",
+    "comingSoon": "Hub intake console coming soon."
   }
 }
