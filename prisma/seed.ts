@@ -98,12 +98,20 @@ async function main() {
     ],
   });
 
-  // --- One sample corridor price (provisional — OQ-2) ---
+  // --- Corridor prices (provisional — OQ-2; pilot corridor to be confirmed per OQ-5) ---
   await prisma.corridorPricing.deleteMany();
-  await prisma.corridorPricing.create({
-    data: {
-      originRegion: "Addis Ababa",
-      destinationRegion: "Hawassa",
+  const corridors = [
+    { originRegion: "Addis Ababa", destinationRegion: "Hawassa" },
+    { originRegion: "Addis Ababa", destinationRegion: "Dire Dawa" },
+    { originRegion: "Addis Ababa", destinationRegion: "Bahir Dar" },
+    { originRegion: "Addis Ababa", destinationRegion: "Adama" },
+    { originRegion: "Addis Ababa", destinationRegion: "Mekelle" },
+    { originRegion: "Hawassa", destinationRegion: "Addis Ababa" },
+    { originRegion: "Dire Dawa", destinationRegion: "Addis Ababa" },
+  ];
+  await prisma.corridorPricing.createMany({
+    data: corridors.map((c) => ({
+      ...c,
       ratePerKgEtb: "120.00",
       minChargeEtb: "200.00",
       aggregatorFlatFeeEtb: "50.00",
@@ -111,7 +119,7 @@ async function main() {
       insuranceRate: "0.0200",
       taxRate: "0.0000",
       effectiveFrom: EFFECTIVE_FROM,
-    },
+    })),
   });
 
   // --- Runtime config thresholds ---
@@ -156,9 +164,21 @@ async function main() {
     },
   });
 
+  // --- Pilot-specific AppConfig keys ---
+  await prisma.appConfig.upsert({
+    where: { key: "traveler.frequent_threshold_90d" },
+    update: {},
+    create: {
+      key: "traveler.frequent_threshold_90d",
+      value: { value: 3 },
+      description: "Trips in 90d at/above which a traveler is classified FREQUENT (frequency-report cron, Constraint 2.1).",
+    },
+  });
+
   const rules = await prisma.itemRestriction.count();
   const configs = await prisma.appConfig.count();
-  console.log(`Seed complete: ${rules} restriction rules, 1 corridor price, ${configs} configs.`);
+  const corridorCount = await prisma.corridorPricing.count();
+  console.log(`Seed complete: ${rules} restriction rules, ${corridorCount} corridors, ${configs} configs.`);
 }
 
 main()
