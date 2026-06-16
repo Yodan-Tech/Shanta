@@ -44,9 +44,14 @@ A single `User` can hold multiple roles (role flags, not separate accounts).
 
 ## Current Phase & Focus
 
-**Phase 0 — Foundation (this is documentation, NOT code).** We define the data model,
-state machine, rules engine, tech stack, and guardrails before writing a line of application
-code. **Phase 1** is a narrow domestic MVP on a single **intra-country (inter-city) corridor**
+**Phase 1 MVP — Sprint COMPLETE (Milestones M0–M15 built).** The full backend + frontend
+is implemented and PRed. Remaining blocker before pilot: OQ-5 (pilot corridor selection),
+OQ-10 (SMS provider), OQ-3 (customs regulation), and the manual steps in
+[docs/LAUNCH_CHECKLIST.md](docs/LAUNCH_CHECKLIST.md). See also the go/no-go gate API:
+`GET /api/v1/admin/launch-gate`. **Next action: founder completes the launch checklist.**
+
+**Phase 0 — Foundation** We defined the data model, state machine, rules engine, tech
+stack, and guardrails. **Phase 1** is a narrow domestic MVP on a single **intra-country (inter-city) corridor**
 within Ethiopia, chosen later by market testing (see [OQ-5](docs/OPEN_QUESTIONS.md)). The job
 of Phase 1 is to validate or kill five riskiest assumptions (supply, aggregator reliability,
 traveler liability acceptance, sender willingness-to-pay, verification friction) — see
