@@ -37,7 +37,7 @@ function candidate(p: Partial<TravelerCandidate> & { travelerId: string }): Trav
 
 describe("TripService", () => {
   it("creates a trip with active legs at full capacity", async () => {
-    const repos = makeInMemoryRepositories();
+    const repos = makeInMemoryRepositories({ kycStatuses: { t1: "VERIFIED" } });
     const svc = new TripService(repos);
     const trip = await svc.create({
       travelerId: "t1",
@@ -59,7 +59,8 @@ describe("TripService", () => {
   });
 
   it("rejects a leg whose arrival precedes departure", async () => {
-    const svc = new TripService(makeInMemoryRepositories());
+    const repos = makeInMemoryRepositories({ kycStatuses: { t1: "VERIFIED" } });
+    const svc = new TripService(repos);
     await expect(
       svc.create({
         travelerId: "t1",

@@ -26,6 +26,8 @@ import type {
   ConfigRepository,
   NotificationRepository,
   ProfileRepository,
+  KycRepository,
+  KycQueueItem,
   Repositories,
   CreateShipmentData,
   CreateTripData,
@@ -605,6 +607,94 @@ export class InMemoryProfileRepository implements ProfileRepository {
   }
 }
 
+// ── KYC fake ──────────────────────────────────────────────────────────────────
+
+interface FakeKycProfile {
+  userId: string;
+  kycStatus: string;
+  phone: string | null;
+  fullName: string | null;
+  kycSubmittedAt: Date | null;
+  idDocumentPath: string | null;
+  kycReviewedBy: string | null;
+  kycReviewedAt: Date | null;
+}
+
+export class InMemoryKycRepository implements KycRepository {
+  readonly profiles = new Map<string, FakeKycProfile>();
+  readonly auditLog: { action: string; userId: string; actorId: string; detail?: unknown }[] = [];
+
+  seed(userId: string, opts: Partial<FakeKycProfile> = {}): void {
+    this.profiles.set(userId, {
+      userId,
+      kycStatus: "UNVERIFIED",
+      phone: null,
+      fullName: null,
+      kycSubmittedAt: null,
+      idDocumentPath: null,
+      kycReviewedBy: null,
+      kycReviewedAt: null,
+      ...opts,
+    });
+  }
+
+  async getStatus(userId: string): Promise<string | null> {
+    return this.profiles.get(userId)?.kycStatus ?? null;
+  }
+
+  async submit(input: { userId: string; idDocumentUrl: string }): Promise<void> {
+    const existing = this.profiles.get(input.userId) ?? {
+      userId: input.userId,
+      phone: null,
+      fullName: null,
+      kycReviewedBy: null,
+      kycReviewedAt: null,
+    };
+    this.profiles.set(input.userId, {
+      ...existing,
+      userId: input.userId,
+      kycStatus: "PENDING_REVIEW",
+      kycSubmittedAt: new Date(),
+      idDocumentPath: input.idDocumentUrl,
+    });
+    this.auditLog.push({ action: "kyc.submit", userId: input.userId, actorId: input.userId });
+  }
+
+  async approve(input: { userId: string; reviewedBy: string }): Promise<void> {
+    const p = this.profiles.get(input.userId);
+    if (p) {
+      p.kycStatus = "VERIFIED";
+      p.kycReviewedBy = input.reviewedBy;
+      p.kycReviewedAt = new Date();
+    }
+    this.auditLog.push({ action: "kyc.approve", userId: input.userId, actorId: input.reviewedBy });
+  }
+
+  async reject(input: { userId: string; reviewedBy: string; reason: string }): Promise<void> {
+    const p = this.profiles.get(input.userId);
+    if (p) {
+      p.kycStatus = "REJECTED";
+      p.kycReviewedBy = input.reviewedBy;
+      p.kycReviewedAt = new Date();
+    }
+    this.auditLog.push({ action: "kyc.reject", userId: input.userId, actorId: input.reviewedBy, detail: input.reason });
+  }
+
+  async listPending(limit: number): Promise<KycQueueItem[]> {
+    return [...this.profiles.values()]
+      .filter((p) => p.kycStatus === "PENDING_REVIEW")
+      .slice(0, limit)
+      .map((p) => ({
+        userId: p.userId,
+        phone: p.phone,
+        fullName: p.fullName,
+        kycStatus: p.kycStatus,
+        kycSubmittedAt: p.kycSubmittedAt,
+        idDocumentPath: p.idDocumentPath,
+      }));
+  }
+}
+
 /** Build a full in-memory Repositories bundle for service tests. */
 export function makeInMemoryRepositories(opts?: {
   rules?: RuleInput[];
@@ -612,6 +702,8 @@ export function makeInMemoryRepositories(opts?: {
   config?: Record<string, number>;
   /** userId → phone number map for notification drain tests. */
   phones?: Record<string, string>;
+  /** userId → kycStatus map for KYC gate tests. */
+  kycStatuses?: Record<string, string>;
 }): Repositories & {
   shipments: InMemoryShipmentRepository;
   trips: InMemoryTripRepository;
@@ -621,12 +713,19 @@ export function makeInMemoryRepositories(opts?: {
   match: InMemoryMatchRepository;
   notifications: InMemoryNotificationRepository;
   profiles: InMemoryProfileRepository;
+  kyc: InMemoryKycRepository;
 } {
   const notifRepo = new InMemoryNotificationRepository();
   const profileRepo = new InMemoryProfileRepository();
+  const kycRepo = new InMemoryKycRepository();
   if (opts?.phones) {
     for (const [id, phone] of Object.entries(opts.phones)) {
       profileRepo.phones.set(id, phone);
+    }
+  }
+  if (opts?.kycStatuses) {
+    for (const [id, status] of Object.entries(opts.kycStatuses)) {
+      kycRepo.seed(id, { kycStatus: status });
     }
   }
   const shipments = new InMemoryShipmentRepository(notifRepo);
@@ -641,5 +740,6 @@ export function makeInMemoryRepositories(opts?: {
     match: new InMemoryMatchRepository(shipments),
     notifications: notifRepo,
     profiles: profileRepo,
+    kyc: kycRepo,
   };
 }
