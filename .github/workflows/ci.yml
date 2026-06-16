@@ -63,11 +63,12 @@ jobs:
           done
           # Run only tests that don't need a live DB; chromium only (mobile
           # viewport tests require longer timeouts and run locally/staging).
+          # Files must come before flags in Playwright v1.61 CLI.
           PLAYWRIGHT_BASE_URL=http://localhost:3000 pnpm exec playwright test \
-            --project chromium \
             e2e/cron-security.spec.ts \
             e2e/confirm.spec.ts \
-            e2e/rate-limit.spec.ts
+            e2e/rate-limit.spec.ts \
+            --project=chromium
           kill $APP_PID || true
         env:
           NEXT_PUBLIC_APP_URL: "http://localhost:3000"
