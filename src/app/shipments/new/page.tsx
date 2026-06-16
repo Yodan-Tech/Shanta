@@ -122,7 +122,7 @@ export default function CreateShipmentPage() {
                   <option value="">Choose a route...</option>
                   {ROUTES.map((r) => (
                     <option key={r.id} value={r.id}>
-                      {r.from} → {r.to}
+                      {r.from} {"→"} {r.to}
                     </option>
                   ))}
                 </select>

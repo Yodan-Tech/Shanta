@@ -10,11 +10,11 @@ import { EscrowService } from "@/lib/services/escrow-service";
 // :id is the SHIPMENT id. Refunds the held logistics fee (sender cancellation,
 // return, or a dispute resolved for the sender); the admin then routes the shipment
 // to CANCELLED / RETURNED_TO_SENDER via the transition endpoint.
-export function POST(
+export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  return handle(async () => {
+  return handle(async (correlationId) => {
     const admin = await requireApiAdminRole(AdminRole.FINANCE);
     const { id } = await params;
     const body = escrowRefundSchema.parse(

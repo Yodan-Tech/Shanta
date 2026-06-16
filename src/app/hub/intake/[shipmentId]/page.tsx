@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
@@ -41,13 +41,13 @@ export default function HubIntakePage({
   // Step 3: Seal form
   const [sealId, setSealId] = useState("");
 
-  React.useEffect(() => {
+  useEffect(() => {
     params.then((p) => setShipmentId(p.shipmentId));
   }, [params]);
 
   async function startCamera(
-    videoRef: React.RefObject<HTMLVideoElement>,
-    canvasRef: React.RefObject<HTMLCanvasElement>,
+    videoRef: React.RefObject<HTMLVideoElement | null>,
+    canvasRef: React.RefObject<HTMLCanvasElement | null>,
     setPhoto: (photo: string | null) => void
   ) {
     try {
@@ -64,8 +64,8 @@ export default function HubIntakePage({
   }
 
   function capturePhoto(
-    videoRef: React.RefObject<HTMLVideoElement>,
-    canvasRef: React.RefObject<HTMLCanvasElement>,
+    videoRef: React.RefObject<HTMLVideoElement | null>,
+    canvasRef: React.RefObject<HTMLCanvasElement | null>,
     setPhoto: (photo: string) => void
   ) {
     if (videoRef.current && canvasRef.current) {
@@ -81,7 +81,7 @@ export default function HubIntakePage({
     }
   }
 
-  function stopCamera(videoRef: React.RefObject<HTMLVideoElement>) {
+  function stopCamera(videoRef: React.RefObject<HTMLVideoElement | null>) {
     if (videoRef.current && videoRef.current.srcObject) {
       const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
       tracks.forEach((track) => track.stop());

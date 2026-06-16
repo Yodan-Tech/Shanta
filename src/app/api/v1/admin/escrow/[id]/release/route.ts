@@ -10,11 +10,11 @@ import { EscrowService } from "@/lib/services/escrow-service";
 // :id is the SHIPMENT id (escrow is 1—1 with a shipment). Release is allowed ONLY
 // when the shipment is DELIVERY_CONFIRMED and the escrow is HELD — never on a
 // DISPUTED shipment (OQ-1 manual escrow; never auto-releases).
-export function POST(
+export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  return handle(async () => {
+  return handle(async (correlationId) => {
     const admin = await requireApiAdminRole(AdminRole.FINANCE);
     const { id } = await params;
     const body = escrowReleaseSchema.parse(await req.json());
