@@ -145,3 +145,69 @@ crisis.**
 - How it was fixed:
 - How to prevent it (runbook/code change):
 ```
+
+---
+
+## 13. Backup-restore drill (§7 — monthly)
+
+### Backup procedure
+```sh
+# Via Supabase CLI (requires project linked and access token)
+supabase db dump --linked > backups/shanta-$(date +%Y%m%d).sql
+
+# Or via Supabase dashboard → Settings → Database → Backups → Download
+```
+
+### Restore to test environment
+```sh
+# Restore to a test Supabase project
+psql "$TEST_DIRECT_URL" < backups/shanta-<date>.sql
+
+# Run smoke tests against restored DB
+PLAYWRIGHT_BASE_URL=https://shanta-test.vercel.app pnpm test:smoke
+```
+
+### Monthly drill checklist
+- [ ] Download latest backup (dashboard or CLI)
+- [ ] Restore to test environment
+- [ ] Run smoke suite — all pass
+- [ ] Run `pnpm test` against test DB — all pass
+- [ ] Document result below (date + outcome):
+
+#### Drill log
+| Date | Outcome | Notes |
+|---|---|---|
+| _(not yet run — run before pilot launch)_ | — | — |
+
+---
+
+## 14. Observability quick-reference
+
+### Vercel logs
+```sh
+# Tail logs (requires Vercel CLI)
+vercel logs --follow shanta
+
+# Filter for errors
+vercel logs shanta | grep '"level":"error"'
+```
+
+### Key structured log fields
+All production logs are JSON with:
+- `correlationId` — matches the `X-Correlation-Id` response header
+- `level` — info / warn / error
+- `msg` — human-readable message
+- `ts` — ISO 8601 timestamp
+
+### Health check
+```sh
+curl https://shanta-alpha.vercel.app/api/v1/health
+# Expected: {"data":{"database":"ok"}}
+```
+
+### Cron job verification (Vercel dashboard)
+Admin → Cron Jobs → verify last-run times for:
+- `drain-notifications` (every minute)
+- `check-stuck-shipments` (hourly)
+- `escrow-timeout` (daily 06:00 UTC)
+- `frequency-report` (weekly Sunday 02:00 UTC)

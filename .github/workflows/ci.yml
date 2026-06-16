@@ -15,6 +15,7 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "ci-dummy-anon-key"
       SUPABASE_SERVICE_ROLE_KEY: "ci-dummy-service-role-key"
+      CRON_SECRET: "ci-dummy-cron-secret"
     steps:
       - uses: actions/checkout@v4
 
@@ -41,8 +42,53 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Test
+      - name: Unit tests
         run: pnpm test
 
       - name: Build
         run: pnpm build
+        env:
+          NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: Start app + run smoke tests
+        run: |
+          pnpm start &
+          APP_PID=$!
+          # Wait for app to be ready
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3000/api/v1/health && break || sleep 2
+          done
+          PLAYWRIGHT_BASE_URL=http://localhost:3000 pnpm test:smoke
+          kill $APP_PID || true
+        env:
+          NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+          CRON_SECRET: "ci-dummy-cron-secret"
+
+  # Integration tests run only on pushes to main (require real DB secrets)
+  integration:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: integration
+    env:
+      DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      RUN_INTEGRATION: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - name: Run integration tests
+        run: pnpm test
