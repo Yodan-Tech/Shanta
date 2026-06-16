@@ -5,12 +5,14 @@ import {
   TripLegStatus,
   ShipmentLegStatus,
   EscrowStatus,
+  NotificationStatus,
   type Shipment,
   type Item,
   type TripLeg,
   type AuditActorType,
   type EscrowRecord,
   type HandoffRecord,
+  type Notification,
 } from "@prisma/client";
 import type { RuleInput, PricingRule } from "@/lib/domain/types";
 import type { TravelerCandidate } from "@/lib/domain/matching";
@@ -22,6 +24,8 @@ import type {
   EscrowRepository,
   HandoffRepository,
   ConfigRepository,
+  NotificationRepository,
+  ProfileRepository,
   Repositories,
   CreateShipmentData,
   CreateTripData,
@@ -65,6 +69,8 @@ export interface StatusHistoryEntry {
 export class InMemoryShipmentRepository implements ShipmentRepository {
   readonly shipments = new Map<string, ShipmentWithItems>();
   readonly statusHistory: StatusHistoryEntry[] = [];
+
+  constructor(private readonly notifRepo?: InMemoryNotificationRepository) {}
 
   async create(data: CreateShipmentData): Promise<ShipmentWithItems> {
     const id = uuid();
@@ -166,6 +172,9 @@ export class InMemoryShipmentRepository implements ShipmentRepository {
       actorId: input.actorId,
       reason: input.reason,
     });
+    if (input.notifications?.length && this.notifRepo) {
+      this.notifRepo.writeSpecs(input.notifications);
+    }
     return { ok: true, shipment: updated };
   }
 }
@@ -218,6 +227,7 @@ export class InMemoryEscrowRepository implements EscrowRepository {
       actorType: input.actorType,
       ...(input.actorId ? { actorId: input.actorId } : {}),
       reason: "escrow armed",
+      ...(input.notifications ? { notifications: input.notifications } : {}),
     });
     if (!res.ok) {
       this.escrows.delete(input.shipmentId);
@@ -267,6 +277,7 @@ export class InMemoryEscrowRepository implements EscrowRepository {
         actorType: input.actorType,
         ...(input.actorId ? { actorId: input.actorId } : {}),
         ...(input.reason ? { reason: input.reason } : {}),
+        ...(input.notifications ? { notifications: input.notifications } : {}),
       });
       if (!res.ok) {
         this.escrows.set(input.shipmentId, escrow); // roll back the escrow change
@@ -343,6 +354,7 @@ export class InMemoryHandoffRepository implements HandoffRepository {
       ...(input.actorId ? { actorId: input.actorId } : {}),
       ...(input.reason ? { reason: input.reason } : {}),
       handoffRecordId: handoff.id,
+      ...(input.notifications ? { notifications: input.notifications } : {}),
     });
     if (!res.ok) return res;
 
@@ -417,6 +429,7 @@ export class InMemoryMatchRepository implements MatchRepository {
       actorType: "USER",
       ...(input.actorId ? { actorId: input.actorId } : {}),
       reason: "matched to traveler",
+      ...(input.notifications ? { notifications: input.notifications } : {}),
     });
     if (!res.ok) {
       leg.availableCapacityKg += input.weightKg;
@@ -447,6 +460,7 @@ export class InMemoryMatchRepository implements MatchRepository {
       actorType: input.actorType,
       ...(input.actorId ? { actorId: input.actorId } : {}),
       reason: input.reason ?? "match released",
+      ...(input.notifications ? { notifications: input.notifications } : {}),
     });
     if (!res.ok) return res;
     return { ok: true, shipment: res.shipment };
@@ -517,11 +531,87 @@ export class InMemoryPricingRepository implements PricingRepository {
   }
 }
 
+// ── Notification fake ─────────────────────────────────────────────────────────
+
+export class InMemoryNotificationRepository implements NotificationRepository {
+  readonly notifications: Notification[] = [];
+
+  /** Called by the shipment repo when writing notifications inside a "transaction". */
+  writeSpecs(specs: import("@/lib/domain/notifications").NotificationSpec[]): void {
+    const now = new Date();
+    for (const s of specs) {
+      this.notifications.push({
+        id: uuid(),
+        userId: s.userId ?? null,
+        recipientPhone: s.recipientPhone ?? null,
+        channel: s.channel,
+        templateKey: s.templateKey,
+        payload: s.payload as Prisma.JsonValue,
+        language: s.language,
+        status: NotificationStatus.QUEUED,
+        attempts: 0,
+        providerRef: null,
+        sentAt: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  }
+
+  async drainQueued(limit: number): Promise<Notification[]> {
+    return this.notifications
+      .filter(
+        (n) =>
+          (n.status === NotificationStatus.QUEUED ||
+            n.status === NotificationStatus.RETRYING) &&
+          n.attempts < 3,
+      )
+      .slice(0, limit);
+  }
+
+  async markSent(id: string, providerRef?: string): Promise<void> {
+    const n = this.notifications.find((x) => x.id === id);
+    if (n) {
+      n.status = NotificationStatus.SENT;
+      n.sentAt = new Date();
+      if (providerRef) n.providerRef = providerRef;
+    }
+  }
+
+  async markFailed(id: string): Promise<void> {
+    const n = this.notifications.find((x) => x.id === id);
+    if (n) n.status = NotificationStatus.FAILED;
+  }
+
+  async markRetrying(id: string): Promise<void> {
+    const n = this.notifications.find((x) => x.id === id);
+    if (n) n.status = NotificationStatus.RETRYING;
+  }
+
+  async incrementAttempts(id: string): Promise<void> {
+    const n = this.notifications.find((x) => x.id === id);
+    if (n) n.attempts += 1;
+  }
+}
+
+// ── Profile fake ──────────────────────────────────────────────────────────────
+
+export class InMemoryProfileRepository implements ProfileRepository {
+  /** Map userId → phone. Set directly in tests that need it. */
+  readonly phones = new Map<string, string>();
+
+  async getPhone(userId: string): Promise<string | null> {
+    return this.phones.get(userId) ?? null;
+  }
+}
+
 /** Build a full in-memory Repositories bundle for service tests. */
 export function makeInMemoryRepositories(opts?: {
   rules?: RuleInput[];
   pricing?: PricingRule | null;
   config?: Record<string, number>;
+  /** userId → phone number map for notification drain tests. */
+  phones?: Record<string, string>;
 }): Repositories & {
   shipments: InMemoryShipmentRepository;
   trips: InMemoryTripRepository;
@@ -529,8 +619,17 @@ export function makeInMemoryRepositories(opts?: {
   handoffs: InMemoryHandoffRepository;
   config: InMemoryConfigRepository;
   match: InMemoryMatchRepository;
+  notifications: InMemoryNotificationRepository;
+  profiles: InMemoryProfileRepository;
 } {
-  const shipments = new InMemoryShipmentRepository();
+  const notifRepo = new InMemoryNotificationRepository();
+  const profileRepo = new InMemoryProfileRepository();
+  if (opts?.phones) {
+    for (const [id, phone] of Object.entries(opts.phones)) {
+      profileRepo.phones.set(id, phone);
+    }
+  }
+  const shipments = new InMemoryShipmentRepository(notifRepo);
   return {
     shipments,
     trips: new InMemoryTripRepository(),
@@ -540,5 +639,7 @@ export function makeInMemoryRepositories(opts?: {
     handoffs: new InMemoryHandoffRepository(shipments),
     config: new InMemoryConfigRepository(opts?.config ?? {}),
     match: new InMemoryMatchRepository(shipments),
+    notifications: notifRepo,
+    profiles: profileRepo,
   };
 }

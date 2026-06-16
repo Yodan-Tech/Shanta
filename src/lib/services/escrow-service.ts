@@ -8,6 +8,7 @@ import {
 import { assertTransition } from "@/lib/domain/state-machine";
 import { assertEscrowTransition } from "@/lib/domain/escrow";
 import { ApiError } from "@/lib/api/errors";
+import type { NotificationSpec } from "@/lib/domain/notifications";
 import type {
   Repositories,
   ShipmentWithItems,
@@ -37,7 +38,10 @@ export class EscrowService {
    * Arm escrow when a shipment is created: open a PENDING hold for the quoted price
    * and advance RULES_VALIDATED → AWAITING_HUB_INTAKE in one transaction.
    */
-  async armForShipment(shipment: ShipmentWithItems): Promise<EscrowChangeResult> {
+  async armForShipment(
+    shipment: ShipmentWithItems,
+    notifications?: NotificationSpec[],
+  ): Promise<EscrowChangeResult> {
     assertTransition(shipment.status, ShipmentStatus.AWAITING_HUB_INTAKE, {});
     const result = await this.repos.escrows.armShipment({
       shipmentId: shipment.id,
@@ -47,6 +51,7 @@ export class EscrowService {
       releaseCondition: RELEASE_CONDITION,
       toStatus: ShipmentStatus.AWAITING_HUB_INTAKE,
       actorType: AuditActorType.SYSTEM,
+      ...(notifications ? { notifications } : {}),
     });
     return this.unwrapArm(result);
   }

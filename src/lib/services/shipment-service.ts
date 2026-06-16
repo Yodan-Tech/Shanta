@@ -8,6 +8,7 @@ import {
 import { assertTransition, type TransitionContext } from "@/lib/domain/state-machine";
 import { evaluateShipment } from "@/lib/domain/rules-engine";
 import { computePrice } from "@/lib/domain/pricing";
+import { notificationsForTransition } from "@/lib/domain/notifications";
 import type { ItemInput, PriceBreakdown } from "@/lib/domain/types";
 import { ApiError } from "@/lib/api/errors";
 import { EscrowService } from "@/lib/services/escrow-service";
@@ -151,10 +152,14 @@ export class ShipmentService {
     //    (PENDING) atomically with the transition (OQ-1, Milestone 4). Escrow is
     //    optional — when it can't be provided the shipment still moves; only the
     //    money-hold steps are skipped.
+    const intakeNotifications = notificationsForTransition(
+      ShipmentStatus.AWAITING_HUB_INTAKE,
+      { shipmentId: created.id, senderUserId: input.senderId },
+    );
     const escrowEnabled = await this.isEscrowEnabled(input.escrow);
     const shipment = escrowEnabled
-      ? (await this.escrow.armForShipment(created)).shipment
-      : await this.advanceToIntakeWithoutEscrow(created);
+      ? (await this.escrow.armForShipment(created, intakeNotifications)).shipment
+      : await this.advanceToIntakeWithoutEscrow(created, intakeNotifications);
 
     return { shipment, price };
   }
@@ -169,6 +174,7 @@ export class ShipmentService {
   /** No-escrow path: advance RULES_VALIDATED → AWAITING_HUB_INTAKE on its own. */
   private async advanceToIntakeWithoutEscrow(
     created: ShipmentWithItems,
+    notifications?: import("@/lib/domain/notifications").NotificationSpec[],
   ): Promise<ShipmentWithItems> {
     assertTransition(created.status, ShipmentStatus.AWAITING_HUB_INTAKE, {});
     const res = await this.repos.shipments.applyTransition({
@@ -177,6 +183,7 @@ export class ShipmentService {
       toStatus: ShipmentStatus.AWAITING_HUB_INTAKE,
       actorType: AuditActorType.SYSTEM,
       reason: "no escrow; advanced to hub intake",
+      ...(notifications ? { notifications } : {}),
     });
     if (!res.ok) {
       throw ApiError.conflict("Shipment was modified concurrently; reload and retry.");

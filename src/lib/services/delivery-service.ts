@@ -8,7 +8,7 @@ import {
 import { assertTransition } from "@/lib/domain/state-machine";
 import { ApiError } from "@/lib/api/errors";
 import { signDeliveryToken, verifyDeliveryToken } from "@/lib/delivery/token";
-import type { SmsSender } from "@/lib/sms/sender";
+import { notificationsForTransition } from "@/lib/domain/notifications";
 import type { Repositories, ShipmentWithItems } from "@/lib/db/ports";
 
 export interface DeliveryOptions {
@@ -19,20 +19,20 @@ export interface DeliveryOptions {
 export interface DeliverOutcome {
   shipment: ShipmentWithItems;
   handoff: HandoffRecord;
-  /** The receiver-confirmation token (also embedded in the SMS link). */
+  /** The receiver-confirmation token (also embedded in the SMS notification link). */
   token: string;
 }
 
 /**
  * DeliveryService — last mile + receiver confirmation (Constraint 2.2 live capture;
  * SMS-first receivers). Delivery photos are LIVE-capture only. On delivery a signed,
- * stateless token is issued and SMS'd to the receiver, who confirms (or disputes)
- * with no login. A disputed delivery NEVER releases escrow — the hold stays put.
+ * stateless token is minted and a receiver-SMS notification is queued atomically
+ * inside the DELIVERED transition (outbox pattern — drain cron sends it). A disputed
+ * delivery NEVER releases escrow — the hold stays put.
  */
 export class DeliveryService {
   constructor(
     private readonly repos: Repositories,
-    private readonly sms: SmsSender,
     private readonly opts: DeliveryOptions,
   ) {}
 
@@ -87,6 +87,15 @@ export class DeliveryService {
     }
     assertTransition(shipment.status, ShipmentStatus.DELIVERED, { hasHandoff: true });
 
+    const token = signDeliveryToken(shipment.id, this.opts.tokenSecret);
+    const link = `${this.opts.appUrl}/confirm?token=${encodeURIComponent(token)}`;
+
+    const notifications = notificationsForTransition(ShipmentStatus.DELIVERED, {
+      shipmentId: shipment.id,
+      receiverPhone: shipment.receiverPhone,
+      confirmLink: link,
+    });
+
     const recorded = await this.repos.handoffs.record({
       shipmentId: shipment.id,
       handoffType: HandoffType.TRAVELER_TO_RECEIVER,
@@ -102,19 +111,13 @@ export class DeliveryService {
       actorType: AuditActorType.USER,
       actorId: input.courierId,
       reason: "delivered to receiver",
+      notifications,
     });
     if (!recorded.ok) {
       throw recorded.reason === "NOT_FOUND"
         ? ApiError.notFound("Shipment not found.")
         : ApiError.conflict("Shipment was modified concurrently; reload and retry.");
     }
-
-    const token = signDeliveryToken(shipment.id, this.opts.tokenSecret);
-    const link = `${this.opts.appUrl}/confirm?token=${encodeURIComponent(token)}`;
-    await this.sms.send({
-      to: shipment.receiverPhone,
-      body: `Shanta: your delivery is here. Confirm receipt: ${link}`,
-    });
 
     return { shipment: recorded.shipment, handoff: recorded.handoff, token };
   }
