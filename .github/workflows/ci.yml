@@ -61,8 +61,10 @@ jobs:
           for i in $(seq 1 30); do
             curl -sf http://localhost:3000/ -o /dev/null && break || sleep 2
           done
-          # Run only tests that don't need a live DB (CI uses dummy credentials)
+          # Run only tests that don't need a live DB; chromium only (mobile
+          # viewport tests require longer timeouts and run locally/staging).
           PLAYWRIGHT_BASE_URL=http://localhost:3000 pnpm exec playwright test \
+            --project chromium \
             e2e/cron-security.spec.ts \
             e2e/confirm.spec.ts \
             e2e/rate-limit.spec.ts
