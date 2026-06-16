@@ -126,6 +126,27 @@ Errors: `400 BAD_REQUEST` (no acknowledgment); `422` (seal not intact / illegal 
 Body `{ "reason"? }` (a **normal** outcome). Restores `TripLeg` capacity, cancels the `ShipmentLeg`,
 re-queues → `AWAITING_MATCH`. → `200 { "data": { "shipment": { "status": "AWAITING_MATCH" } } }`
 
+### Delivery + receiver confirmation (Constraint 2.2 live capture; SMS-first receiver)
+
+#### `POST /api/v1/shipments/:id/out-for-delivery` · role: AGGREGATOR
+`AT_DESTINATION_HUB → OUT_FOR_DELIVERY`.
+
+#### `POST /api/v1/shipments/:id/deliver` · role: TRAVELER
+Multipart: `photo` (≥1 **LIVE** image — gallery rejected) + `payload` JSON `{ captureMethod, geoLat?, geoLng? }`.
+→ `DELIVERED`; issues a **signed, stateless token** and SMSs the receiver a no-login confirm link.
+The token is **not** returned in the response (only the receiver gets it).
+→ `200 { "data": { "shipment": { "status": "DELIVERED" }, "handoff": {...} } }`
+Errors: `422` (gallery / no photo / illegal state).
+
+#### `POST /api/v1/shipments/:id/delivery-attempted` · role: TRAVELER
+`OUT_FOR_DELIVERY → DELIVERY_ATTEMPTED` (retry via out-for-delivery, or escalate).
+
+#### `POST /api/v1/delivery/confirm` — **NO LOGIN** (the SMS token is the authorization)
+Body `{ "token", "problem"?: false, "reason"? }`. `problem: true` → `DISPUTED` (**escrow stays HELD**);
+otherwise `DELIVERED → DELIVERY_CONFIRMED`.
+→ `200 { "data": { "shipment": {...}, "outcome": "DELIVERY_CONFIRMED"|"DISPUTED" } }`
+Errors: `401 UNAUTHORIZED` (invalid/expired token); `404`; `409 CONFLICT`.
+
 ### `POST /api/v1/admin/escrow/:id/release` — release the hub escrow · ADMIN (FINANCE/SUPER_ADMIN)
 `:id` is the **shipment id** (escrow is 1—1 with a shipment). Releases the held logistics fee
 **only when the escrow is `HELD` and the shipment is `DELIVERY_CONFIRMED`** (never on a `DISPUTED`
@@ -174,9 +195,9 @@ Lets the UI render categories, caps, frequency-sensitive limits, and prohibition
 
 ## Not yet implemented (next backend slices)
 
-Delivery + receiver SMS confirmation (Milestone 7); notifications outbox (Milestone 8); KYC
-submission/review (Milestone 9); admin operations panel (Milestone 10). Built and tested: the state
-machine, rules engine, pricing, query matching, **manual hub escrow** (optional; arm/release/refund),
-the **hub verification chain** (intake → verify → seal, private Storage + magic-byte validation +
-signed URLs), and **matching assignment + traveler accept/reject** (capacity/crowding re-check,
-acknowledgment + intact-seal, escrow HELD on custody).
+Notifications outbox + background jobs (Milestone 8); KYC submission/review (Milestone 9); admin
+operations panel (Milestone 10). Built and tested: state machine, rules engine, pricing, query
+matching, **manual hub escrow** (optional; arm/release/refund), the **hub verification chain**
+(intake → verify → seal, private Storage + magic-byte validation + signed URLs), **matching
+assignment + traveler accept/reject**, and **delivery + receiver SMS confirmation** (live-capture,
+stateless signed token, no-login confirm/dispute, pluggable SMS sender + webhook HMAC verify).

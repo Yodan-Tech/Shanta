@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ShipmentStatus, TripMode } from "@prisma/client";
+import { ShipmentStatus, TripMode, CaptureMethod } from "@prisma/client";
 import { phoneSchema } from "@/lib/validators";
 
 /** Zod schemas for /api/v1 request bodies. Every route validates input here. */
@@ -42,6 +42,22 @@ export const adminTransitionSchema = z.object({
   context: transitionContextSchema,
 });
 export type AdminTransitionBody = z.infer<typeof adminTransitionSchema>;
+
+/** Delivery payload (JSON form field next to the live photo). captureMethod is enforced LIVE. */
+export const deliverPayloadSchema = z.object({
+  captureMethod: z.nativeEnum(CaptureMethod).default(CaptureMethod.LIVE),
+  geoLat: z.number().min(-90).max(90).optional(),
+  geoLng: z.number().min(-180).max(180).optional(),
+});
+export type DeliverPayload = z.infer<typeof deliverPayloadSchema>;
+
+/** Receiver confirmation (no-login, SMS token). `problem: true` → DISPUTED. */
+export const deliveryConfirmSchema = z.object({
+  token: z.string().min(1),
+  problem: z.boolean().default(false),
+  reason: z.string().max(500).optional(),
+});
+export type DeliveryConfirmBody = z.infer<typeof deliveryConfirmSchema>;
 
 /** Aggregator assigns a trip leg to a shipment (Constraint 2.1 ranking applied upstream). */
 export const matchSchema = z.object({ tripLegId: z.string().uuid() });
