@@ -2,12 +2,15 @@ import {
   Prisma,
   ShipmentLegStatus,
   EscrowStatus,
+  NotificationStatus,
   type ItemRestriction,
   type CorridorPricing,
+  type Notification,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { RuleInput, PricingRule } from "@/lib/domain/types";
 import type { TravelerCandidate } from "@/lib/domain/matching";
+import type { NotificationSpec } from "@/lib/domain/notifications";
 import type {
   ShipmentRepository,
   TripRepository,
@@ -16,6 +19,8 @@ import type {
   EscrowRepository,
   HandoffRepository,
   ConfigRepository,
+  NotificationRepository,
+  ProfileRepository,
   Repositories,
   CreateShipmentData,
   CreateTripData,
@@ -70,6 +75,7 @@ async function txTransitionShipment(
     actorId?: string;
     reason?: string;
     handoffRecordId?: string;
+    notifications?: NotificationSpec[];
   },
 ): Promise<ApplyTransitionResult> {
   const current = await tx.shipment.findUnique({
@@ -110,6 +116,21 @@ async function txTransitionShipment(
       afterState: { status: args.toStatus },
     },
   });
+
+  if (args.notifications?.length) {
+    await tx.notification.createMany({
+      data: args.notifications.map((n) => ({
+        userId: n.userId ?? null,
+        recipientPhone: n.recipientPhone ?? null,
+        channel: n.channel,
+        templateKey: n.templateKey,
+        payload: n.payload as Prisma.InputJsonValue,
+        language: n.language,
+        status: NotificationStatus.QUEUED,
+        attempts: 0,
+      })),
+    });
+  }
 
   return { ok: true as const, shipment: updated };
 }
@@ -217,6 +238,7 @@ export class PrismaShipmentRepository implements ShipmentRepository {
         ...(input.actorId ? { actorId: input.actorId } : {}),
         ...(input.reason ? { reason: input.reason } : {}),
         ...(input.handoffRecordId ? { handoffRecordId: input.handoffRecordId } : {}),
+        ...(input.notifications ? { notifications: input.notifications } : {}),
       }),
     );
   }
@@ -355,6 +377,7 @@ export class PrismaEscrowRepository implements EscrowRepository {
           actorType: input.actorType,
           ...(input.actorId ? { actorId: input.actorId } : {}),
           reason: "escrow armed",
+          ...(input.notifications ? { notifications: input.notifications } : {}),
         });
         if (!res.ok) throw new TxAbort(res.reason);
 
@@ -399,6 +422,7 @@ export class PrismaEscrowRepository implements EscrowRepository {
             actorType: input.actorType,
             ...(input.actorId ? { actorId: input.actorId } : {}),
             ...(input.reason ? { reason: input.reason } : {}),
+            ...(input.notifications ? { notifications: input.notifications } : {}),
           });
           if (!res.ok) throw new TxAbort(res.reason);
           shipment = res.shipment;
@@ -513,6 +537,7 @@ export class PrismaHandoffRepository implements HandoffRepository {
           ...(input.actorId ? { actorId: input.actorId } : {}),
           ...(input.reason ? { reason: input.reason } : {}),
           handoffRecordId: handoff.id,
+          ...(input.notifications ? { notifications: input.notifications } : {}),
         });
         if (!res.ok) throw new TxAbort(res.reason);
         return { ok: true as const, handoff, shipment: res.shipment };
@@ -618,6 +643,7 @@ export class PrismaMatchRepository implements MatchRepository {
           actorType: "USER",
           ...(input.actorId ? { actorId: input.actorId } : {}),
           reason: "matched to traveler",
+          ...(input.notifications ? { notifications: input.notifications } : {}),
         });
         if (!res.ok) throw new TxAbort(res.reason);
         return { ok: true as const, shipment: res.shipment };
@@ -655,6 +681,7 @@ export class PrismaMatchRepository implements MatchRepository {
           actorType: input.actorType,
           ...(input.actorId ? { actorId: input.actorId } : {}),
           reason: input.reason ?? "match released",
+          ...(input.notifications ? { notifications: input.notifications } : {}),
         });
         if (!res.ok) throw new TxAbort(res.reason);
         return { ok: true as const, shipment: res.shipment };
@@ -665,6 +692,65 @@ export class PrismaMatchRepository implements MatchRepository {
       }
       throw e;
     }
+  }
+}
+
+// ── Notification outbox repository ──────────────────────────────────────────
+
+export class PrismaNotificationRepository implements NotificationRepository {
+  async drainQueued(limit: number): Promise<Notification[]> {
+    return prisma.notification.findMany({
+      where: {
+        status: { in: [NotificationStatus.QUEUED, NotificationStatus.RETRYING] },
+        attempts: { lt: 3 },
+      },
+      orderBy: { createdAt: "asc" },
+      take: limit,
+    });
+  }
+
+  async markSent(id: string, providerRef?: string): Promise<void> {
+    await prisma.notification.update({
+      where: { id },
+      data: {
+        status: NotificationStatus.SENT,
+        sentAt: new Date(),
+        ...(providerRef ? { providerRef } : {}),
+      },
+    });
+  }
+
+  async markFailed(id: string): Promise<void> {
+    await prisma.notification.update({
+      where: { id },
+      data: { status: NotificationStatus.FAILED },
+    });
+  }
+
+  async markRetrying(id: string): Promise<void> {
+    await prisma.notification.update({
+      where: { id },
+      data: { status: NotificationStatus.RETRYING },
+    });
+  }
+
+  async incrementAttempts(id: string): Promise<void> {
+    await prisma.notification.update({
+      where: { id },
+      data: { attempts: { increment: 1 } },
+    });
+  }
+}
+
+// ── Profile repository ────────────────────────────────────────────────────────
+
+export class PrismaProfileRepository implements ProfileRepository {
+  async getPhone(userId: string): Promise<string | null> {
+    const row = await prisma.profile.findUnique({
+      where: { id: userId },
+      select: { phone: true },
+    });
+    return row?.phone ?? null;
   }
 }
 
@@ -679,5 +765,7 @@ export function getRepositories(): Repositories {
     handoffs: new PrismaHandoffRepository(),
     config: new PrismaConfigRepository(),
     match: new PrismaMatchRepository(),
+    notifications: new PrismaNotificationRepository(),
+    profiles: new PrismaProfileRepository(),
   };
 }
