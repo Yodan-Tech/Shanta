@@ -16,9 +16,11 @@ import type {
   CustomsFrequencyTier,
   TripLegStatus,
   TripStatus,
+  Notification,
 } from "@prisma/client";
 import type { RuleInput, PricingRule } from "@/lib/domain/types";
 import type { TravelerCandidate } from "@/lib/domain/matching";
+import type { NotificationSpec } from "@/lib/domain/notifications";
 
 /**
  * Repository PORTS — the data-access contract the services depend on. Two
@@ -66,6 +68,9 @@ export interface CreateShipmentData {
   initialStatus: ShipmentStatus;
 }
 
+// Re-export so callers don't need two imports.
+export type { NotificationSpec } from "@/lib/domain/notifications";
+
 // ── Optimistic state transition ──────────────────────────────────────────────
 
 export interface ApplyTransitionInput {
@@ -76,6 +81,8 @@ export interface ApplyTransitionInput {
   actorId?: string;
   reason?: string;
   handoffRecordId?: string;
+  /** Written atomically inside the same DB transaction. */
+  notifications?: NotificationSpec[];
 }
 
 export type ApplyTransitionResult =
@@ -125,6 +132,7 @@ export interface ArmEscrowInput {
   toStatus: ShipmentStatus;
   actorType: AuditActorType;
   actorId?: string;
+  notifications?: NotificationSpec[];
 }
 
 export type ArmEscrowResult =
@@ -148,6 +156,7 @@ export interface ApplyEscrowChangeInput {
   reason?: string;
   /** AdminUser id recorded on RELEASED. */
   releasedBy?: string;
+  notifications?: NotificationSpec[];
 }
 
 export type ApplyEscrowChangeResult =
@@ -243,6 +252,7 @@ export interface RecordHandoffInput {
   /** Stamp this seal id onto every item (sealing step). */
   itemSealId?: string;
   restrictionCheck?: RestrictionCheckData;
+  notifications?: NotificationSpec[];
 }
 
 export type RecordHandoffResult =
@@ -258,6 +268,41 @@ export interface HandoffRepository {
 export interface ConfigRepository {
   /** Numeric config value by key (AppConfig.value = { value: number }), or null. */
   getNumber(key: string): Promise<number | null>;
+}
+
+// ── KYC ──────────────────────────────────────────────────────────────────────
+
+export interface KycQueueItem {
+  userId: string;
+  phone: string | null;
+  fullName: string | null;
+  kycStatus: string;
+  kycSubmittedAt: Date | null;
+  /** Storage path (NOT a signed URL — callers must sign before returning to clients). */
+  idDocumentPath: string | null;
+}
+
+export interface KycRepository {
+  getStatus(userId: string): Promise<string | null>;
+  submit(input: { userId: string; idDocumentUrl: string }): Promise<void>;
+  approve(input: { userId: string; reviewedBy: string }): Promise<void>;
+  reject(input: { userId: string; reviewedBy: string; reason: string }): Promise<void>;
+  listPending(limit: number): Promise<KycQueueItem[]>;
+}
+
+/** Notification outbox — drain, send, update status. */
+export interface NotificationRepository {
+  /** Fetch QUEUED/RETRYING rows with attempts < 3, ordered by createdAt asc. */
+  drainQueued(limit: number): Promise<Notification[]>;
+  markSent(id: string, providerRef?: string): Promise<void>;
+  markFailed(id: string): Promise<void>;
+  markRetrying(id: string): Promise<void>;
+  incrementAttempts(id: string): Promise<void>;
+}
+
+/** Profile reads needed by the notification drain worker. */
+export interface ProfileRepository {
+  getPhone(userId: string): Promise<string | null>;
 }
 
 // ── Matching assignment + traveler accept/reject (Constraints 2.1 + 2.2) ───────
@@ -286,6 +331,7 @@ export interface AssignTravelerInput {
   expectedVersion: number;
   toStatus: ShipmentStatus;
   actorId?: string;
+  notifications?: NotificationSpec[];
 }
 
 export type AssignTravelerResult =
@@ -301,6 +347,7 @@ export interface ReleaseMatchInput {
   actorType: AuditActorType;
   actorId?: string;
   reason?: string;
+  notifications?: NotificationSpec[];
 }
 
 export type ReleaseMatchResult =
@@ -326,4 +373,7 @@ export interface Repositories {
   handoffs: HandoffRepository;
   config: ConfigRepository;
   match: MatchRepository;
+  notifications: NotificationRepository;
+  profiles: ProfileRepository;
+  kyc: KycRepository;
 }

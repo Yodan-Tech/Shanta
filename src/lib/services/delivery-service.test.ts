@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { ShipmentStatus, CaptureMethod, EscrowStatus, AuditActorType } from "@prisma/client";
 import type { PricingRule } from "@/lib/domain/types";
 import { makeInMemoryRepositories } from "@/lib/db/memory";
-import { LoggingSmsSender } from "@/lib/sms/sender";
 import { ShipmentService, type CreateShipmentInput } from "./shipment-service";
 import { EscrowService } from "./escrow-service";
 import { DeliveryService } from "./delivery-service";
@@ -27,15 +26,13 @@ function baseInput(over: Partial<CreateShipmentInput> = {}): CreateShipmentInput
 let repos: ReturnType<typeof makeInMemoryRepositories>;
 let ship: ShipmentService;
 let escrow: EscrowService;
-let sms: LoggingSmsSender;
 let delivery: DeliveryService;
 
 beforeEach(() => {
   repos = makeInMemoryRepositories({ rules: [], pricing: PRICING });
   ship = new ShipmentService(repos);
   escrow = new EscrowService(repos);
-  sms = new LoggingSmsSender();
-  delivery = new DeliveryService(repos, sms, { tokenSecret: SECRET, appUrl: "https://shanta.app" });
+  delivery = new DeliveryService(repos, { tokenSecret: SECRET, appUrl: "https://shanta.app" });
 });
 
 /** Drive a fresh shipment to OUT_FOR_DELIVERY using guarded transitions. */
@@ -63,14 +60,18 @@ async function outForDelivery() {
 }
 
 describe("DeliveryService.deliver (Constraint 2.2 live capture)", () => {
-  it("delivers with a live photo, issues a token, and SMSs the receiver", async () => {
+  it("delivers with a live photo, issues a token, and queues a receiver SMS notification", async () => {
     const id = await outForDelivery();
     const out = await delivery.deliver({ shipmentId: id, courierId: COURIER, photoUrls: ["live.jpg"], captureMethod: CaptureMethod.LIVE });
     expect(out.shipment.status).toBe(ShipmentStatus.DELIVERED);
     expect(out.token).toBeTruthy();
-    expect(sms.sent).toHaveLength(1);
-    expect(sms.sent[0]!.to).toBe("+251911223344");
-    expect(sms.sent[0]!.body).toContain("token=");
+    // Notification queued atomically with the DELIVERED transition.
+    const notifs = repos.notifications.notifications;
+    const deliveryNotif = notifs.find((n) => n.templateKey === "delivery_confirmation_link");
+    expect(deliveryNotif).toBeDefined();
+    expect(deliveryNotif!.recipientPhone).toBe("+251911223344");
+    expect((deliveryNotif!.payload as Record<string, unknown>)["confirmLink"]).toContain("token=");
+    expect(deliveryNotif!.status).toBe("QUEUED");
   });
 
   it("rejects a gallery (non-live) delivery photo", async () => {
