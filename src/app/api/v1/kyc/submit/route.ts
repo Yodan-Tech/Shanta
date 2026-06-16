@@ -1,5 +1,4 @@
 import { type NextRequest } from "next/server";
-import { z } from "zod";
 import { handle, ok } from "@/lib/api/response";
 import { requireApiProfile } from "@/lib/api/context";
 import { getRepositories } from "@/lib/db/prisma-repositories";
