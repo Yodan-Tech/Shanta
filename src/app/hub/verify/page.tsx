@@ -1,15 +1,15 @@
 import { redirect } from "next/navigation";
 import { Logo } from "@/components/logo";
 import { LocaleSwitcher } from "@/components/locale-switcher";
-import { VerifyForm } from "./verify-form";
+import { HubVerifyForm } from "./hub-verify-form";
 
-export default async function VerifyPage({
+export default async function HubVerifyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ phone?: string; action?: string }>;
+  searchParams: Promise<{ phone?: string }>;
 }) {
-  const { phone, action } = await searchParams;
-  if (!phone) redirect("/login");
+  const { phone } = await searchParams;
+  if (!phone) redirect("/hub/login");
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -18,7 +18,7 @@ export default async function VerifyPage({
         <LocaleSwitcher />
       </header>
       <main className="flex flex-1 items-center justify-center px-6">
-        <VerifyForm phone={phone} />
+        <HubVerifyForm phone={phone} />
       </main>
     </div>
   );

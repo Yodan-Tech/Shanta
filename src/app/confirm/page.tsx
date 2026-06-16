@@ -1,146 +1,315 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import { Logo } from "@/components/logo";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Logo } from "@/components/logo";
 
-type State = "idle" | "loading" | "confirmed" | "disputed" | "error" | "invalid";
-
-function ConfirmContent() {
+export default function ConfirmDeliveryPage() {
+  const t = useTranslations("confirm");
   const searchParams = useSearchParams();
-  const token = searchParams.get("token") ?? "";
-  const [state, setState] = useState<State>(token ? "idle" : "invalid");
-  const [showProblem, setShowProblem] = useState(false);
-  const [reason, setReason] = useState("");
+  const token = searchParams.get("token");
 
-  async function confirm(problem: boolean) {
-    setState("loading");
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(token ? null : "Invalid delivery link");
+  const [showProblem, setShowProblem] = useState(false);
+  const [problem, setProblem] = useState("");
+
+  async function startCamera() {
     try {
-      const res = await fetch("/api/v1/delivery/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, problem, reason: problem ? reason : undefined }),
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: false,
       });
-      const data = (await res.json()) as { data?: { outcome?: string }; error?: string };
-      if (!res.ok) {
-        setState("error");
-        return;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        setCameraOpen(true);
       }
-      setState(data.data?.outcome === "DISPUTED" ? "disputed" : "confirmed");
-    } catch {
-      setState("error");
+    } catch (err) {
+      setError("Unable to access camera");
     }
   }
 
+  function capturePhoto() {
+    if (videoRef.current && canvasRef.current) {
+      const context = canvasRef.current.getContext("2d");
+      if (context) {
+        canvasRef.current.width = videoRef.current.videoWidth;
+        canvasRef.current.height = videoRef.current.videoHeight;
+        context.drawImage(videoRef.current, 0, 0);
+        const photoData = canvasRef.current.toDataURL("image/jpeg");
+        setPhoto(photoData);
+        stopCamera();
+      }
+    }
+  }
+
+  function stopCamera() {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+      tracks.forEach((track) => track.stop());
+      setCameraOpen(false);
+    }
+  }
+
+  async function handleConfirm() {
+    setLoading(true);
+    setError(null);
+
+    try {
+      if (!token) throw new Error("Invalid token");
+
+      const response = await fetch("/api/v1/delivery/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          token,
+          problem: false,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || "Confirmation failed");
+      }
+
+      setSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleProblem() {
+    setLoading(true);
+    setError(null);
+
+    try {
+      if (!token) throw new Error("Invalid token");
+      if (!problem.trim()) throw new Error("Please describe the problem");
+
+      const response = await fetch("/api/v1/delivery/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          token,
+          problem: true,
+          reason: problem,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || "Dispute submission failed");
+      }
+
+      setSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Invalid token
+  if (!token) {
+    return (
+      <div className="flex min-h-screen flex-col bg-background">
+        <header className="flex items-center px-6 py-4 border-b border-border">
+          <Logo />
+        </header>
+        <main className="flex flex-1 items-center justify-center px-6">
+          <Card className="w-full max-w-md text-center">
+            <CardHeader>
+              <CardTitle>Invalid Link</CardTitle>
+              <CardDescription>This delivery confirmation link is invalid or has expired.</CardDescription>
+            </CardHeader>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
+  // Success screen
+  if (success) {
+    const successTitle = showProblem ? "Dispute Submitted" : "Confirmed";
+    const successDesc = showProblem
+      ? "Your dispute has been submitted and will be reviewed by our team."
+      : "Thank you for confirming delivery. Your payment is secure in escrow.";
+
+    return (
+      <div className="flex min-h-screen flex-col bg-background">
+        <header className="flex items-center px-6 py-4 border-b border-border">
+          <Logo />
+        </header>
+        <main className="flex flex-1 items-center justify-center px-6">
+          <Card className="w-full max-w-md text-center">
+            <CardHeader>
+              <div className="text-4xl mb-4">{showProblem ? "⚠️" : "✓"}</div>
+              <CardTitle>{successTitle}</CardTitle>
+              <CardDescription>{successDesc}</CardDescription>
+            </CardHeader>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
+  // Dispute form
+  if (showProblem) {
+    return (
+      <div className="flex min-h-screen flex-col bg-background">
+        <header className="flex items-center px-6 py-4 border-b border-border">
+          <Logo />
+        </header>
+        <main className="flex-1 px-6 py-10">
+          <div className="max-w-md mx-auto">
+            <h1 className="text-3xl font-bold text-foreground mb-2">Report Issue</h1>
+            <p className="text-muted mb-8">Let us know what went wrong with this delivery</p>
+
+            <Card>
+              <div className="px-6 py-6 space-y-4">
+                <div className="space-y-2">
+                  <label htmlFor="problem" className="text-sm font-medium text-foreground">
+                    What is the problem?
+                  </label>
+                  <textarea
+                    id="problem"
+                    value={problem}
+                    onChange={(e) => setProblem(e.target.value)}
+                    placeholder="Describe the issue..."
+                    className="w-full px-3 py-2 border border-border rounded-[var(--radius)] focus:outline-none focus:ring-2 focus:ring-primary h-24 resize-none text-sm"
+                  />
+                </div>
+
+                {error && <div className="bg-red-50 border border-danger rounded p-3 text-danger text-sm">{error}</div>}
+
+                <div className="flex gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowProblem(false)}
+                    className="flex-1"
+                    disabled={loading}
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={handleProblem}
+                    disabled={loading || !problem.trim()}
+                    className="flex-1 bg-danger text-danger-foreground hover:bg-red-700"
+                  >
+                    {loading ? "Submitting..." : "Submit Dispute"}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // Main confirm screen
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="flex items-center px-6 py-4">
+    <div className="flex min-h-screen flex-col bg-background">
+      <header className="flex items-center px-6 py-4 border-b border-border">
         <Logo />
       </header>
+      <main className="flex-1 px-6 py-10">
+        <div className="max-w-md mx-auto">
+          <h1 className="text-3xl font-bold text-foreground mb-2">{t("title")}</h1>
+          <p className="text-muted mb-8">{t("subtitle")}</p>
 
-      <main className="flex flex-1 items-center justify-center px-6">
-        <div className="w-full max-w-sm">
-          {state === "invalid" && (
-            <div className="text-center">
-              <h1 className="text-xl font-bold">Invalid link</h1>
-              <p className="mt-2 text-sm text-muted">
-                This confirmation link is invalid or has expired.
-              </p>
-            </div>
+          {/* Camera Section */}
+          {!photo ? (
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle className="text-lg">Take Delivery Photo</CardTitle>
+                <CardDescription>Live camera capture required</CardDescription>
+              </CardHeader>
+              <div className="px-6 pb-6 space-y-4">
+                {!cameraOpen ? (
+                  <Button
+                    type="button"
+                    onClick={startCamera}
+                    className="w-full bg-primary text-primary-foreground h-11"
+                  >
+                    Open Camera
+                  </Button>
+                ) : (
+                  <>
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      className="w-full rounded-lg bg-black"
+                    />
+                    <canvas ref={canvasRef} hidden />
+                    <Button
+                      type="button"
+                      onClick={capturePhoto}
+                      className="w-full bg-success text-success-foreground"
+                    >
+                      Capture Photo
+                    </Button>
+                  </>
+                )}
+              </div>
+            </Card>
+          ) : (
+            <Card className="mb-6">
+              <div className="px-6 py-6 space-y-4">
+                <img src={photo} alt="Delivery" className="w-full rounded-lg mb-4" />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setPhoto(null)}
+                  className="w-full"
+                >
+                  Retake Photo
+                </Button>
+              </div>
+            </Card>
           )}
 
-          {state === "idle" && !showProblem && (
-            <div className="text-center space-y-4">
-              <h1 className="text-2xl font-bold">Your delivery has arrived!</h1>
-              <p className="text-muted">Did you receive your package in good condition?</p>
-              <Button className="w-full" onClick={() => void confirm(false)}>
-                Yes, I received it
-              </Button>
-              <button
-                type="button"
-                className="block w-full text-sm text-danger hover:underline"
-                onClick={() => setShowProblem(true)}
-              >
-                Report a problem
-              </button>
-            </div>
-          )}
+          {/* Error */}
+          {error && <div className="bg-red-50 border border-danger rounded p-3 text-danger text-sm mb-6">{error}</div>}
 
-          {state === "idle" && showProblem && (
-            <div className="space-y-4">
-              <h1 className="text-xl font-bold">Report a problem</h1>
-              <p className="text-sm text-muted">
-                Describe what happened. Our team will review the evidence and follow up.
-              </p>
-              <textarea
-                className="w-full rounded-lg border border-border px-3 py-2 text-sm"
-                rows={4}
-                placeholder="e.g. The seal was broken, one item is missing"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-              />
-              <Button
-                variant="outline"
-                className="w-full border-danger text-danger"
-                onClick={() => void confirm(true)}
-                disabled={!reason.trim()}
-              >
-                Submit report
-              </Button>
-              <button
-                type="button"
-                className="block w-full text-sm text-muted hover:underline"
-                onClick={() => setShowProblem(false)}
-              >
-                ← Go back
-              </button>
-            </div>
-          )}
-
-          {state === "loading" && (
-            <div className="text-center">
-              <p className="text-muted">Submitting…</p>
-            </div>
-          )}
-
-          {state === "confirmed" && (
-            <div className="text-center space-y-2">
-              <div className="text-5xl">✓</div>
-              <h1 className="text-xl font-bold">Delivery confirmed</h1>
-              <p className="text-sm text-muted">
-                Thank you. Your confirmation has been recorded.
-              </p>
-            </div>
-          )}
-
-          {state === "disputed" && (
-            <div className="text-center space-y-2">
-              <div className="text-5xl">!</div>
-              <h1 className="text-xl font-bold">Dispute submitted</h1>
-              <p className="text-sm text-muted">
-                We&apos;ve recorded your report. Our team will review the evidence and contact you.
-              </p>
-            </div>
-          )}
-
-          {state === "error" && (
-            <div className="text-center space-y-4">
-              <h1 className="text-xl font-bold">Something went wrong</h1>
-              <p className="text-sm text-muted">Please try again or contact support.</p>
-              <Button onClick={() => setState("idle")}>Try again</Button>
-            </div>
-          )}
+          {/* Actions */}
+          <div className="flex gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowProblem(true)}
+              className="flex-1"
+              disabled={loading}
+            >
+              Report Issue
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirm}
+              disabled={loading || !photo}
+              className="flex-1 bg-success text-success-foreground hover:bg-green-700"
+            >
+              {loading ? "Confirming..." : "Confirm Delivery"}
+            </Button>
+          </div>
         </div>
       </main>
     </div>
-  );
-}
-
-export default function ConfirmPage() {
-  return (
-    <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><p className="text-muted">Loading…</p></div>}>
-      <ConfirmContent />
-    </Suspense>
   );
 }

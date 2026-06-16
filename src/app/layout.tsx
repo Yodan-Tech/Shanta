@@ -31,7 +31,7 @@ export default async function RootLayout({
   return (
     <html
       lang={locale}
-      className={`${inter.variable} ${notoEthiopic.variable} h-full antialiased`}
+      className={`${inter.variable} ${notoEthiopic.variable} h-full antialiased bg-background`}
     >
       <body className="min-h-full flex flex-col">
         <NextIntlClientProvider>{children}</NextIntlClientProvider>
