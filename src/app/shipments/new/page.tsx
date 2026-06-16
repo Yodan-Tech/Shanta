@@ -11,10 +11,10 @@ import { Logo } from "@/components/logo";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 
 const ROUTES = [
-  { id: "addis-dawa", from: "Addis Ababa", to: "Dire Dawa" },
-  { id: "addis-hawassa", from: "Addis Ababa", to: "Hawassa" },
-  { id: "addis-bahirdar", from: "Addis Ababa", to: "Bahir Dar" },
-  { id: "addis-adama", from: "Addis Ababa", to: "Adama" },
+  { id: "addis-dawa", from: "Addis Ababa", fromRegion: "AA", to: "Dire Dawa", toRegion: "DD" },
+  { id: "addis-hawassa", from: "Addis Ababa", fromRegion: "AA", to: "Hawassa", toRegion: "SNNPR" },
+  { id: "addis-bahirdar", from: "Addis Ababa", fromRegion: "AA", to: "Bahir Dar", toRegion: "Amhara" },
+  { id: "addis-adama", from: "Addis Ababa", fromRegion: "AA", to: "Adama", toRegion: "Oromia" },
 ];
 
 const calculatePricing = (baseAmount: number = 500) => {
@@ -34,6 +34,7 @@ export default function CreateShipmentPage() {
     route: "",
     items: "",
     receiverPhone: "",
+    receiverName: "",
     insurance: false,
   });
   const [loading, setLoading] = useState(false);
@@ -46,12 +47,52 @@ export default function CreateShipmentPage() {
     setError(null);
     setLoading(true);
 
-    // TODO: Submit to API
-    console.log("[v0] Shipment form submitted:", formData);
-    setLoading(false);
+    try {
+      const selectedRoute = ROUTES.find((r) => r.id === formData.route);
+      if (!selectedRoute) {
+        throw new Error("Invalid route selected");
+      }
 
-    // For now, just redirect back to dashboard
-    router.push("/dashboard?action=send");
+      const response = await fetch("/api/v1/shipments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          receiverName: formData.receiverName || "Unknown",
+          receiverPhone: formData.receiverPhone,
+          originRegion: selectedRoute.fromRegion,
+          destinationRegion: selectedRoute.toRegion,
+          countryCode: "ET",
+          insuranceOptedIn: formData.insurance,
+          items: [
+            {
+              category: "GENERAL",
+              description: formData.items,
+              declaredWeightKg: 5,
+              declaredValueEtb: pricing.total,
+            },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || "Failed to create shipment");
+      }
+
+      const result = await response.json();
+      const shipmentId = result.data?.id;
+      
+      if (shipmentId) {
+        router.push(`/shipments/${shipmentId}`);
+      } else {
+        router.push("/dashboard?action=send");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -94,6 +135,18 @@ export default function CreateShipmentPage() {
                 <CardTitle className="text-base sm:text-lg">{t("items")}</CardTitle>
               </CardHeader>
               <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name" className="text-sm font-medium">Receiver Name</Label>
+                  <Input
+                    id="name"
+                    type="text"
+                    value={formData.receiverName}
+                    onChange={(e) => setFormData({ ...formData, receiverName: e.target.value })}
+                    placeholder="Full name"
+                    className="h-11 sm:h-10 text-base"
+                    required
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="items" className="text-sm font-medium">{t("items")}</Label>
                   <textarea
