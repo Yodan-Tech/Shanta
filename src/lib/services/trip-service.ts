@@ -9,6 +9,8 @@ import type {
 export interface CreateTripInput {
   travelerId: string;
   mode: TripMode;
+  /** Airport agent (Profile id) posting this trip for a traveler they manage. */
+  agentId?: string;
   countryCode: string;
   legs: CreateTripLegData[];
 }
@@ -42,6 +44,7 @@ export class TripService {
     return this.repos.trips.create({
       travelerId: input.travelerId,
       mode: input.mode,
+      ...(input.agentId ? { agentId: input.agentId } : {}),
       countryCode: input.countryCode,
       legs: input.legs,
     });

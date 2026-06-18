@@ -7,6 +7,7 @@ import { phoneSchema } from "@/lib/validators";
 export const createItemSchema = z.object({
   category: z.string().min(1).max(64),
   description: z.string().min(1).max(500),
+  quantity: z.number().int().positive().max(100).optional(),
   declaredWeightKg: z.number().positive().max(100),
   declaredValueEtb: z.number().nonnegative().optional(),
 });
@@ -17,6 +18,7 @@ export const createShipmentSchema = z.object({
   originRegion: z.string().min(1).max(80),
   destinationRegion: z.string().min(1).max(80),
   insuranceOptedIn: z.boolean().default(false),
+  serviceType: z.enum(["FULL", "AGGREGATION_ONLY"]).optional(),
   idempotencyKey: z.string().uuid().optional(),
   items: z.array(createItemSchema).min(1).max(20),
 });

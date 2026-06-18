@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,11 +14,34 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export function VerifyForm({ phone }: { phone: string }) {
-  const t = useTranslations("auth");
+type Channel = "phone" | "sms" | "email";
+
+export function VerifyForm({
+  contact,
+  channel,
+}: {
+  contact: string;
+  channel: Channel;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const action = searchParams.get("action"); // 'send' or 'travel'
+  const nextHref = searchParams.get("next") ?? "/onboarding";
+  const destination = useMemo(() => {
+    const params = new URLSearchParams();
+    for (const key of [
+      "originRegion",
+      "destinationRegion",
+      "weightKg",
+      "category",
+      "description",
+      "receiverName",
+      "receiverPhone",
+    ]) {
+      const value = searchParams.get(key);
+      if (value) params.set(key, value);
+    }
+    return params.toString();
+  }, [searchParams]);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -31,36 +53,33 @@ export function VerifyForm({ phone }: { phone: string }) {
 
     const supabase = createClient();
     const { error: verifyError } = await supabase.auth.verifyOtp({
-      phone,
+      ...(channel === "email" ? { email: contact } : { phone: contact }),
       token: code.trim(),
-      type: "sms",
+      type: channel === "email" ? "email" : "sms",
     });
     setLoading(false);
 
     if (verifyError) {
-      setError(t("errorInvalidCode"));
+      setError("That code is incorrect or has expired. Please try again.");
       return;
     }
 
-    // If action was passed from landing, go directly to dashboard with action param
-    // Otherwise, go to action chooser
-    if (action === "send" || action === "travel") {
-      router.push(`/dashboard?action=${action}`);
-    } else {
-      router.push("/onboarding");
-    }
+    const nextUrl = destination ? `${nextHref}?${destination}` : nextHref;
+    router.push(nextUrl);
     router.refresh();
   }
 
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
-        <CardTitle>{t("otpTitle")}</CardTitle>
-        <CardDescription>{t("otpSubtitle", { phone })}</CardDescription>
+        <CardTitle>Enter your code</CardTitle>
+        <CardDescription>
+          We sent a code to {contact}. This is the last step before booking.
+        </CardDescription>
       </CardHeader>
       <form onSubmit={onSubmit} className="space-y-4">
         <div>
-          <Label htmlFor="code">{t("otpLabel")}</Label>
+          <Label htmlFor="code">Verification code</Label>
           <Input
             id="code"
             name="code"
@@ -77,11 +96,11 @@ export function VerifyForm({ phone }: { phone: string }) {
         </div>
         {error && <p className="text-sm text-danger">{error}</p>}
         <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? "…" : t("verify")}
+          {loading ? "…" : "Verify and continue"}
         </Button>
         <div className="flex justify-between text-sm">
           <Link href="/login" className="text-muted hover:text-primary">
-            {t("changeNumber")}
+            Change login method
           </Link>
         </div>
       </form>

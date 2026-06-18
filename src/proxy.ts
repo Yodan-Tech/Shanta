@@ -47,6 +47,7 @@ function getIp(req: NextRequest): string {
 /** Rate-limited paths: [pathPrefix, requestsPerMinute] */
 const RATE_LIMITS: [string, number][] = [
   ["/api/v1/kyc/submit", 5],
+  ["/api/v1/auth/telegram", 10], // Telegram login session minting
   ["/login", 10],
   ["/verify", 10],
   ["/api/auth", 10],

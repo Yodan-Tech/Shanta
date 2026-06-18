@@ -6,10 +6,25 @@ import { VerifyForm } from "./verify-form";
 export default async function VerifyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ phone?: string; action?: string }>;
+  searchParams: Promise<{
+    contact?: string;
+    phone?: string;
+    email?: string;
+    channel?: "phone" | "email" | "sms";
+    next?: string;
+    originRegion?: string;
+    destinationRegion?: string;
+    weightKg?: string;
+    category?: string;
+    description?: string;
+    receiverName?: string;
+    receiverPhone?: string;
+  }>;
 }) {
-  const { phone, action } = await searchParams;
-  if (!phone) redirect("/login");
+  const params = await searchParams;
+  const contact = params.contact ?? params.phone ?? params.email;
+  const channel = params.channel ?? (params.email ? "email" : "phone");
+  if (!contact) redirect("/login");
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -18,7 +33,7 @@ export default async function VerifyPage({
         <LocaleSwitcher />
       </header>
       <main className="flex flex-1 items-center justify-center px-6">
-        <VerifyForm phone={phone} />
+        <VerifyForm contact={contact} channel={channel} />
       </main>
     </div>
   );

@@ -53,6 +53,7 @@ const CANCELLABLE: readonly S[] = [
   ShipmentStatus.WEIGHT_DISCREPANCY,
   ShipmentStatus.CONTENTS_VERIFIED,
   ShipmentStatus.SEALED,
+  ShipmentStatus.CONSOLIDATED,
   ShipmentStatus.AWAITING_MATCH,
   ShipmentStatus.MATCHED_TO_TRAVELER,
   ShipmentStatus.TRAVELER_REVIEWED,
@@ -64,6 +65,7 @@ const HOLDABLE: readonly S[] = [
   ShipmentStatus.AT_ORIGIN_HUB,
   ShipmentStatus.CONTENTS_VERIFIED,
   ShipmentStatus.SEALED,
+  ShipmentStatus.CONSOLIDATED,
   ShipmentStatus.AWAITING_MATCH,
   ShipmentStatus.MATCHED_TO_TRAVELER,
   ShipmentStatus.TRAVELER_REVIEWED,
@@ -81,6 +83,7 @@ const RETURNABLE: readonly S[] = [
   ShipmentStatus.WEIGHT_DISCREPANCY,
   ShipmentStatus.CONTENTS_VERIFIED,
   ShipmentStatus.SEALED,
+  ShipmentStatus.CONSOLIDATED,
   ShipmentStatus.AWAITING_MATCH,
   ShipmentStatus.MATCHED_TO_TRAVELER,
   ShipmentStatus.TRAVELER_REVIEWED,
@@ -138,6 +141,17 @@ function build(): Record<S, TransitionSpec[]> {
     requiresSealApplied: true,
   });
   add(m, E.SEALED, { to: E.AWAITING_MATCH, actor: "SYSTEM" });
+
+  // Aggregation-only service (ADR-0003): the hub consolidates and hands off to the
+  // sender's own carrier or the receiver — no platform matching/transit. Gated by
+  // Shipment.serviceType at the service layer.
+  add(m, E.SEALED, { to: E.CONSOLIDATED, actor: "AGGREGATOR" });
+  add(m, E.CONSOLIDATED, {
+    to: E.DELIVERED,
+    actor: "AGGREGATOR",
+    requiresHandoff: true,
+  });
+
   add(m, E.AWAITING_MATCH, { to: E.MATCHED_TO_TRAVELER, actor: "AGGREGATOR" });
   add(m, E.MATCHED_TO_TRAVELER, {
     to: E.TRAVELER_REVIEWED,

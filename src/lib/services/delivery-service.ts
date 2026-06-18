@@ -19,16 +19,16 @@ export interface DeliveryOptions {
 export interface DeliverOutcome {
   shipment: ShipmentWithItems;
   handoff: HandoffRecord;
-  /** The receiver-confirmation token (also embedded in the SMS notification link). */
+  /** The receiver-confirmation token (also embedded in the pickup notification link). */
   token: string;
 }
 
 /**
- * DeliveryService — last mile + receiver confirmation (Constraint 2.2 live capture;
- * SMS-first receivers). Delivery photos are LIVE-capture only. On delivery a signed,
- * stateless token is minted and a receiver-SMS notification is queued atomically
- * inside the DELIVERED transition (outbox pattern — drain cron sends it). A disputed
- * delivery NEVER releases escrow — the hold stays put.
+ * DeliveryService — destination hub release + receiver confirmation (Constraint 2.2
+ * live capture; SMS-first receivers). Delivery photos are LIVE-capture only. On hub
+ * release a signed, stateless token is minted and a receiver notification is queued
+ * atomically inside the DELIVERED transition (outbox pattern — drain cron sends it).
+ * A disputed pickup NEVER releases escrow — the hold stays put.
  */
 export class DeliveryService {
   constructor(
@@ -36,7 +36,7 @@ export class DeliveryService {
     private readonly opts: DeliveryOptions,
   ) {}
 
-  /** Aggregator dispatches for last-mile: AT_DESTINATION_HUB → OUT_FOR_DELIVERY. */
+  /** Aggregator marks the hub release point: AT_DESTINATION_HUB → OUT_FOR_DELIVERY. */
   async outForDelivery(
     shipmentId: string,
     operatorId: string,
@@ -50,27 +50,28 @@ export class DeliveryService {
     );
   }
 
-  /** Courier marks a failed attempt: OUT_FOR_DELIVERY → DELIVERY_ATTEMPTED. */
+  /** Hub marks a failed pickup attempt: OUT_FOR_DELIVERY → DELIVERY_ATTEMPTED. */
   async attempted(
     shipmentId: string,
-    courierId: string,
+    operatorId: string,
   ): Promise<ShipmentWithItems> {
     const shipment = await this.requireShipment(shipmentId);
     return this.transition(
       shipment,
       ShipmentStatus.DELIVERY_ATTEMPTED,
-      courierId,
-      "delivery attempted",
+      operatorId,
+      "pickup attempted",
     );
   }
 
   /**
-   * Courier delivers: OUT_FOR_DELIVERY → DELIVERED with a LIVE photo, then issues a
-   * signed confirmation token and SMSs the receiver a no-login confirm link.
+   * Hub operator releases the package for pickup: OUT_FOR_DELIVERY → DELIVERED with
+   * a LIVE photo, then issues a signed confirmation token and SMSs the receiver a
+   * no-login pickup link.
    */
   async deliver(input: {
     shipmentId: string;
-    courierId: string;
+    operatorId: string;
     photoUrls: string[];
     captureMethod: CaptureMethod;
     geoLat?: number;
@@ -98,9 +99,9 @@ export class DeliveryService {
 
     const recorded = await this.repos.handoffs.record({
       shipmentId: shipment.id,
-      handoffType: HandoffType.TRAVELER_TO_RECEIVER,
-      fromActorId: input.courierId,
-      toActorId: shipment.receiverUserId ?? input.courierId,
+      handoffType: HandoffType.HUB_TO_RECEIVER,
+      fromActorId: input.operatorId,
+      toActorId: shipment.receiverUserId ?? input.operatorId,
       photoUrls: input.photoUrls,
       captureMethod: CaptureMethod.LIVE,
       ...(input.geoLat != null ? { geoLat: input.geoLat } : {}),
@@ -109,8 +110,8 @@ export class DeliveryService {
       expectedVersion: shipment.version,
       toStatus: ShipmentStatus.DELIVERED,
       actorType: AuditActorType.USER,
-      actorId: input.courierId,
-      reason: "delivered to receiver",
+      actorId: input.operatorId,
+      reason: "released for hub pickup",
       notifications,
     });
     if (!recorded.ok) {
@@ -156,10 +157,10 @@ export class DeliveryService {
       return { shipment: res.shipment, outcome: "DISPUTED" };
     }
 
-    // Confirm: the courier's live delivery handoff satisfies requiresHandoff.
+    // Confirm: the hub's live release handoff satisfies requiresHandoff.
     const handoffs = await this.repos.handoffs.listByShipment(shipment.id);
     const hasDeliveryHandoff = handoffs.some(
-      (h) => h.handoffType === HandoffType.TRAVELER_TO_RECEIVER,
+      (h) => h.handoffType === HandoffType.HUB_TO_RECEIVER,
     );
     assertTransition(shipment.status, ShipmentStatus.DELIVERY_CONFIRMED, {
       hasHandoff: hasDeliveryHandoff,
@@ -169,7 +170,7 @@ export class DeliveryService {
       expectedVersion: shipment.version,
       toStatus: ShipmentStatus.DELIVERY_CONFIRMED,
       actorType: AuditActorType.SYSTEM,
-      reason: "receiver confirmed delivery (SMS token verified)",
+      reason: "receiver confirmed pickup (SMS token verified)",
     });
     if (!res.ok) throw this.conflictOrNotFound(res.reason);
     return { shipment: res.shipment, outcome: "DELIVERY_CONFIRMED" };

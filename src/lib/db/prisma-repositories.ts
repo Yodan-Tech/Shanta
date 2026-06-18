@@ -21,6 +21,7 @@ import type {
   ConfigRepository,
   NotificationRepository,
   ProfileRepository,
+  ProfileContact,
   KycRepository,
   KycQueueItem,
   Repositories,
@@ -43,6 +44,8 @@ import type {
   ReleaseMatchInput,
   ReleaseMatchResult,
   CandidateSearchCriteria,
+  ActiveLegSummary,
+  ActiveLegsByRouteCriteria,
 } from "./ports";
 
 const num = (d: Prisma.Decimal): number => d.toNumber();
@@ -146,11 +149,14 @@ function ruleFromPrisma(r: ItemRestriction): RuleInput {
     corridorCode: r.corridorCode,
     maxWeightKg: r.maxWeightKg ? num(r.maxWeightKg) : null,
     maxValueEtb: r.maxValueEtb ? num(r.maxValueEtb) : null,
+    maxUnitsPerTraveler: r.maxUnitsPerTraveler ?? null,
     frequencySensitive: r.frequencySensitive,
     maxWeightKgFrequent: r.maxWeightKgFrequent ? num(r.maxWeightKgFrequent) : null,
     requiresDeclaration: r.requiresDeclaration,
     requiresSpecialPermit: r.requiresSpecialPermit,
     prohibited: r.prohibited,
+    dutyApplies: r.dutyApplies,
+    dutyNote: r.dutyNote,
     direction: r.direction,
     effectiveFrom: r.effectiveFrom,
     effectiveUntil: r.effectiveUntil,
@@ -179,6 +185,7 @@ export class PrismaShipmentRepository implements ShipmentRepository {
         receiverPhone: data.receiverPhone,
         originRegion: data.originRegion,
         destinationRegion: data.destinationRegion,
+        ...(data.serviceType ? { serviceType: data.serviceType } : {}),
         countryCode: data.countryCode,
         insuranceOptedIn: data.insuranceOptedIn,
         idempotencyKey: data.idempotencyKey ?? null,
@@ -194,6 +201,7 @@ export class PrismaShipmentRepository implements ShipmentRepository {
           create: data.items.map((it) => ({
             category: it.category,
             description: it.description,
+            ...(it.quantity ? { quantity: it.quantity } : {}),
             declaredWeightKg: it.declaredWeightKg,
             declaredValueEtb: it.declaredValueEtb ?? null,
           })),
@@ -254,6 +262,7 @@ export class PrismaTripRepository implements TripRepository {
       data: {
         travelerId: data.travelerId,
         mode: data.mode,
+        ...(data.agentId ? { agentId: data.agentId } : {}),
         countryCode: data.countryCode,
         status: "ACTIVE",
         legs: {
@@ -327,6 +336,35 @@ export class PrismaTripRepository implements TripRepository {
       });
     }
     return candidates;
+  }
+
+  async listActiveLegsByRoute(
+    criteria: ActiveLegsByRouteCriteria,
+  ): Promise<ActiveLegSummary[]> {
+    const legs = await prisma.tripLeg.findMany({
+      where: {
+        originRegion: criteria.originRegion,
+        destinationRegion: criteria.destinationRegion,
+        departAt: { gte: criteria.fromDate },
+        status: "ACTIVE",
+        availableCapacityKg: { gt: 0 },
+        trip: {
+          status: "ACTIVE",
+          traveler: { status: "ACTIVE", kycStatus: "VERIFIED" },
+        },
+      },
+      orderBy: { departAt: "asc" },
+      take: criteria.limit,
+      include: { trip: { select: { travelerId: true } } },
+    });
+    return legs.map((leg) => ({
+      tripLegId: leg.id,
+      travelerId: leg.trip.travelerId,
+      originRegion: leg.originRegion,
+      destinationRegion: leg.destinationRegion,
+      departAt: leg.departAt,
+      availableCapacityKg: num(leg.availableCapacityKg),
+    }));
   }
 }
 
@@ -753,6 +791,18 @@ export class PrismaProfileRepository implements ProfileRepository {
       select: { phone: true },
     });
     return row?.phone ?? null;
+  }
+
+  async getContact(userId: string): Promise<ProfileContact | null> {
+    const row = await prisma.profile.findUnique({
+      where: { id: userId },
+      select: { phone: true, telegramUserId: true },
+    });
+    if (!row) return null;
+    return {
+      phone: row.phone ?? null,
+      telegramUserId: row.telegramUserId ?? null,
+    };
   }
 }
 

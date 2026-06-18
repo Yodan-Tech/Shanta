@@ -46,6 +46,8 @@ export interface ItemInput {
   category: string;
   weightKg: number;
   valueEtb?: number;
+  /** Number of units of this item (e.g. 2 laptops). Defaults to 1. */
+  units?: number;
   /** True if the sender supplied a special permit for this item. */
   hasPermit?: boolean;
 }
@@ -57,11 +59,16 @@ export interface RuleInput {
   corridorCode: string | null;
   maxWeightKg: number | null;
   maxValueEtb: number | null;
+  /** Per-person personal-use unit cap (e.g. 1 laptop/person into ET). null = no unit cap. */
+  maxUnitsPerTraveler: number | null;
   frequencySensitive: boolean;
   maxWeightKgFrequent: number | null;
   requiresDeclaration: boolean;
   requiresSpecialPermit: boolean;
   prohibited: boolean;
+  /** Transparency: item is declarable/taxable at customs on this route. */
+  dutyApplies: boolean;
+  dutyNote: string | null;
   direction: RestrictionDirection;
   effectiveFrom: Date;
   effectiveUntil: Date | null;
@@ -74,7 +81,12 @@ export interface ItemEvaluation {
   result: RestrictionCheckResult;
   failedRuleId?: string;
   limitAppliedKg?: number;
+  /** Per-person unit cap that applied (when a unit-count rule governed the item). */
+  limitAppliedUnits?: number;
   reason?: string;
+  /** Transparency surfacing (not a failure): item is declarable/taxable here. */
+  dutyApplies?: boolean;
+  dutyNote?: string;
 }
 
 /** Result of evaluating a whole shipment (overall + per item). */

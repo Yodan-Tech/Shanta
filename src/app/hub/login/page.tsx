@@ -35,7 +35,7 @@ export default function HubLoginPage() {
       setError(otpError.status === 429 ? "Too many attempts. Please wait." : otpError.message);
       return;
     }
-    router.push(`/verify?phone=${encodeURIComponent(phone)}&redirect=/hub/dashboard`);
+    router.push(`/hub/verify?phone=${encodeURIComponent(phone)}`);
   }
 
   return (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,10 +11,12 @@ import { Logo } from "@/components/logo";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 
 const ROUTES = [
-  { id: "addis-dawa", from: "Addis Ababa", fromRegion: "AA", to: "Dire Dawa", toRegion: "DD" },
-  { id: "addis-hawassa", from: "Addis Ababa", fromRegion: "AA", to: "Hawassa", toRegion: "SNNPR" },
-  { id: "addis-bahirdar", from: "Addis Ababa", fromRegion: "AA", to: "Bahir Dar", toRegion: "Amhara" },
-  { id: "addis-adama", from: "Addis Ababa", fromRegion: "AA", to: "Adama", toRegion: "Oromia" },
+  { id: "addis-dubai", from: "Addis Ababa", fromRegion: "Addis Ababa", to: "Dubai", toRegion: "Dubai" },
+  { id: "dubai-addis", from: "Dubai", fromRegion: "Dubai", to: "Addis Ababa", toRegion: "Addis Ababa" },
+  { id: "addis-dawa", from: "Addis Ababa", fromRegion: "Addis Ababa", to: "Dire Dawa", toRegion: "Dire Dawa" },
+  { id: "addis-hawassa", from: "Addis Ababa", fromRegion: "Addis Ababa", to: "Hawassa", toRegion: "Hawassa" },
+  { id: "addis-bahirdar", from: "Addis Ababa", fromRegion: "Addis Ababa", to: "Bahir Dar", toRegion: "Bahir Dar" },
+  { id: "addis-adama", from: "Addis Ababa", fromRegion: "Addis Ababa", to: "Adama", toRegion: "Adama" },
 ];
 
 const calculatePricing = (baseAmount: number = 500) => {
@@ -30,11 +32,23 @@ const calculatePricing = (baseAmount: number = 500) => {
 export default function CreateShipmentPage() {
   const t = useTranslations("shipments");
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const originRegion = searchParams.get("originRegion") ?? "";
+  const destinationRegion = searchParams.get("destinationRegion") ?? "";
+  const weightKg = searchParams.get("weightKg") ?? "";
+  const description = searchParams.get("description") ?? "";
+  const receiverName = searchParams.get("receiverName") ?? "";
+  const receiverPhone = searchParams.get("receiverPhone") ?? "";
+  const defaultRoute = ROUTES.find(
+    (route) =>
+      route.from.toLowerCase() === originRegion.toLowerCase() &&
+      route.to.toLowerCase() === destinationRegion.toLowerCase(),
+  )?.id ?? "";
   const [formData, setFormData] = useState({
-    route: "",
-    items: "",
-    receiverPhone: "",
-    receiverName: "",
+    route: defaultRoute,
+    items: description,
+    receiverPhone,
+    receiverName,
     insurance: false,
   });
   const [loading, setLoading] = useState(false);
@@ -52,6 +66,10 @@ export default function CreateShipmentPage() {
       if (!selectedRoute) {
         throw new Error("Invalid route selected");
       }
+      const declaredWeightKg = Number(weightKg || 5);
+      if (!Number.isFinite(declaredWeightKg) || declaredWeightKg <= 0) {
+        throw new Error("Enter a valid item weight from the preview step.");
+      }
 
       const response = await fetch("/api/v1/shipments", {
         method: "POST",
@@ -68,7 +86,7 @@ export default function CreateShipmentPage() {
             {
               category: "GENERAL",
               description: formData.items,
-              declaredWeightKg: 5,
+              declaredWeightKg,
               declaredValueEtb: pricing.total,
             },
           ],
@@ -104,7 +122,9 @@ export default function CreateShipmentPage() {
       <main className="flex-1 px-4 sm:px-6 py-6 sm:py-8">
         <div className="w-full max-w-2xl mx-auto">
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-1">{t("create")}</h1>
-          <p className="text-sm text-muted mb-6 sm:mb-8">{t("details")}</p>
+          <p className="text-sm text-muted mb-6 sm:mb-8">
+            {t("details")} {originRegion && destinationRegion ? ` ${originRegion} → ${destinationRegion}` : ""}
+          </p>
 
           <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
             {/* Route Selection */}

@@ -5,6 +5,7 @@ import { requireApiRole } from "@/lib/api/context";
 import { createShipmentSchema } from "@/lib/api/schemas";
 import { getRepositories } from "@/lib/db/prisma-repositories";
 import { ShipmentService } from "@/lib/services/shipment-service";
+import { resolveRouteContext } from "@/lib/routes";
 
 // POST /api/v1/shipments — create a shipment (runs rules + pricing). Sender role.
 export function POST(req: NextRequest) {
@@ -14,6 +15,12 @@ export function POST(req: NextRequest) {
     const idempotencyKey =
       req.headers.get("Idempotency-Key") ?? body.idempotencyKey;
 
+    // Resolve per-route context so customs caps (e.g. 1 laptop/person ENTRY) apply.
+    const route = await resolveRouteContext(
+      body.originRegion,
+      body.destinationRegion,
+    );
+
     const svc = new ShipmentService(getRepositories());
     const result = await svc.create({
       senderId: profile.id,
@@ -22,6 +29,9 @@ export function POST(req: NextRequest) {
       receiverPhone: body.receiverPhone,
       originRegion: body.originRegion,
       destinationRegion: body.destinationRegion,
+      corridorCode: route.corridorCode,
+      direction: route.direction,
+      ...(body.serviceType ? { serviceType: body.serviceType } : {}),
       insuranceOptedIn: body.insuranceOptedIn,
       items: body.items,
       ...(idempotencyKey ? { idempotencyKey } : {}),

@@ -29,6 +29,15 @@ export interface CreateShipmentInput {
   idempotencyKey?: string;
   items: CreateItemData[];
   /**
+   * Route context for customs rule resolution (ADR-0003). Callers resolve the route
+   * (resolveRouteContext) and pass the corridor + customs direction so per-route
+   * caps (e.g. 1 laptop/person ENTRY into ET) apply. Defaults: domestic (null/BOTH).
+   */
+  corridorCode?: string | null;
+  direction?: RestrictionDirection;
+  /** Service type — FULL (default) or AGGREGATION_ONLY. */
+  serviceType?: import("@prisma/client").ServiceType;
+  /**
    * Whether to arm manual hub escrow for this shipment. Escrow is NOT guaranteed —
    * sometimes it cannot be provided — so it is optional. When omitted, the
    * `escrow.enabled` AppConfig decides (default: enabled).
@@ -84,11 +93,12 @@ export class ShipmentService {
     const items: ItemInput[] = input.items.map((it) => ({
       category: it.category,
       weightKg: it.declaredWeightKg,
+      units: it.quantity ?? 1,
       ...(it.declaredValueEtb !== undefined ? { valueEtb: it.declaredValueEtb } : {}),
     }));
     const evaluation = evaluateShipment(items, rules, {
-      corridorCode: null,
-      direction: RestrictionDirection.BOTH,
+      corridorCode: input.corridorCode ?? null,
+      direction: input.direction ?? RestrictionDirection.BOTH,
     });
     if (evaluation.result === RestrictionCheckResult.FAIL) {
       throw ApiError.rulesFailed("One or more items cannot be shipped.", {
@@ -134,6 +144,7 @@ export class ShipmentService {
       receiverPhone: input.receiverPhone,
       originRegion: input.originRegion,
       destinationRegion: input.destinationRegion,
+      ...(input.serviceType ? { serviceType: input.serviceType } : {}),
       countryCode: input.countryCode,
       insuranceOptedIn: input.insuranceOptedIn,
       ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),

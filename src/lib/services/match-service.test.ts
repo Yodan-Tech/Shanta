@@ -19,8 +19,9 @@ const PRICING: PricingRule = {
 };
 const SPICES_RULE: RuleInput = {
   id: "spices", itemCategory: "SPICES", corridorCode: null, maxWeightKg: 5,
-  maxValueEtb: null, frequencySensitive: false, maxWeightKgFrequent: null,
+  maxValueEtb: null, maxUnitsPerTraveler: null, frequencySensitive: false, maxWeightKgFrequent: null,
   requiresDeclaration: false, requiresSpecialPermit: false, prohibited: false,
+  dutyApplies: false, dutyNote: null,
   direction: RestrictionDirection.BOTH, effectiveFrom: new Date("2026-01-01"), effectiveUntil: null,
 };
 const CONFIG = { "intake.weight_discrepancy_threshold_kg": 0.5 };

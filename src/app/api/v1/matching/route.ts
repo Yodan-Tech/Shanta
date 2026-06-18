@@ -5,6 +5,7 @@ import { requireApiRole } from "@/lib/api/context";
 import { matchingQuerySchema } from "@/lib/api/schemas";
 import { getRepositories } from "@/lib/db/prisma-repositories";
 import { MatchingService } from "@/lib/services/matching-service";
+import { prisma } from "@/lib/prisma";
 
 // GET /api/v1/matching?originRegion&destinationRegion&windowStart&windowEnd&itemCategory&itemWeightKg
 // Aggregator finds ranked, eligible travelers for an item (Constraint 2.1 ordering).
@@ -24,6 +25,22 @@ export function GET(req: NextRequest) {
       itemWeightKg: q.itemWeightKg,
       countryCode: profile.countryCode,
     });
+
+    // Intelligence capture (M20): record the search, and a NO_MATCH unmet-demand
+    // signal when supply is missing on this route. Best-effort; never blocks.
+    void prisma.demandSignal
+      .create({
+        data: {
+          originRegion: q.originRegion,
+          destinationRegion: q.destinationRegion,
+          itemCategory: q.itemCategory,
+          source: matches.length === 0 ? "NO_MATCH" : "SEARCH",
+          actorId: profile.id,
+          countryCode: profile.countryCode,
+        },
+      })
+      .catch(() => {});
+
     return ok(matches);
   });
 }

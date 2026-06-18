@@ -70,7 +70,7 @@ async function driveToDelivered() {
   await step(ShipmentStatus.IN_TRANSIT);
   await step(ShipmentStatus.AT_DESTINATION_HUB, { hasHandoff: true });
   await step(ShipmentStatus.OUT_FOR_DELIVERY);
-  const { token } = await delivery.deliver({ shipmentId: id, courierId: COURIER, photoUrls: ["live.jpg"], captureMethod: CaptureMethod.LIVE });
+  const { token } = await delivery.deliver({ shipmentId: id, operatorId: COURIER, photoUrls: ["live.jpg"], captureMethod: CaptureMethod.LIVE });
   return { id, token };
 }
 

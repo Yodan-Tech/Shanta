@@ -124,14 +124,31 @@ export function evaluateItem(
       result: RestrictionCheckResult.NEEDS_PERMIT,
       failedRuleId: rule.id,
       reason: `${item.category} requires a special permit.`,
+      ...dutyInfo(rule),
     };
   }
 
   if (rule.requiresDeclaration) {
-    return { ...base, result: RestrictionCheckResult.NEEDS_DECLARATION };
+    return {
+      ...base,
+      result: RestrictionCheckResult.NEEDS_DECLARATION,
+      ...dutyInfo(rule),
+    };
   }
 
-  return base;
+  // Passes — still surface duty transparency (declarable/taxable) when it applies.
+  return { ...base, ...dutyInfo(rule) };
+}
+
+/** Transparency block: what the traveller should expect at customs (not a failure). */
+function dutyInfo(
+  rule: RuleInput,
+): { dutyApplies?: boolean; dutyNote?: string } {
+  if (!rule.dutyApplies) return {};
+  return {
+    dutyApplies: true,
+    ...(rule.dutyNote ? { dutyNote: rule.dutyNote } : {}),
+  };
 }
 
 // Overall result precedence: FAIL > NEEDS_PERMIT > NEEDS_DECLARATION > PASS.
@@ -164,12 +181,42 @@ export function evaluateShipment(
       rules,
       opts.direction,
     );
-    return evaluateItem(item, rule, opts.travelerTier);
+    return { item, rule, evaluation: evaluateItem(item, rule, opts.travelerTier) };
   });
 
+  // Per-person unit cap is an AGGREGATE across the shipment: the lawful personal-use
+  // allowance (e.g. 1 laptop/person into ET) applies to the total units of a category,
+  // not each line — so two 1-unit lines of the same category still breach a cap of 1.
+  const unitsByCategory = new Map<string, number>();
+  for (const { item } of evaluations) {
+    unitsByCategory.set(
+      item.category,
+      (unitsByCategory.get(item.category) ?? 0) + (item.units ?? 1),
+    );
+  }
+  for (const entry of evaluations) {
+    const { item, rule, evaluation } = entry;
+    if (
+      rule?.maxUnitsPerTraveler != null &&
+      evaluation.result !== RestrictionCheckResult.FAIL
+    ) {
+      const total = unitsByCategory.get(item.category) ?? 0;
+      if (total > rule.maxUnitsPerTraveler) {
+        entry.evaluation = {
+          ...evaluation,
+          result: RestrictionCheckResult.FAIL,
+          failedRuleId: rule.id,
+          limitAppliedUnits: rule.maxUnitsPerTraveler,
+          reason: `${total} ${item.category} exceeds the personal-use allowance of ${rule.maxUnitsPerTraveler} per traveler.`,
+        };
+      }
+    }
+  }
+
+  const finalEvaluations = evaluations.map((e) => e.evaluation);
   return {
-    result: worst(evaluations.map((e) => e.result)),
-    items: evaluations,
+    result: worst(finalEvaluations.map((e) => e.result)),
+    items: finalEvaluations,
   };
 }
 
@@ -184,4 +231,105 @@ export function checkCrowding(
   categoryLimitKg: number,
 ): boolean {
   return alreadyAcceptedKg + newItemKg <= categoryLimitKg;
+}
+
+// ── "What can I pack" summary (bot /pack, admin) ──────────────────────────────
+
+/** A human-facing cap summary for one category on a route/direction. */
+export interface CategoryCap {
+  category: string;
+  prohibited: boolean;
+  maxWeightKg: number | null;
+  maxUnitsPerTraveler: number | null;
+  requiresDeclaration: boolean;
+  requiresSpecialPermit: boolean;
+  dutyApplies: boolean;
+  dutyNote: string | null;
+}
+
+/**
+ * Summarise the governing rule per category for a route + direction — the data
+ * behind "what can I pack". Compliance-positive: it states each traveller's lawful
+ * personal-use allowance and what is declarable/taxable; it is not duty-avoidance advice.
+ */
+export function summarizeCaps(
+  rules: RuleInput[],
+  opts: { corridorCode?: string | null; direction: RestrictionDirection; onDate?: Date },
+): CategoryCap[] {
+  const onDate = opts.onDate ?? new Date();
+  const categories = [...new Set(rules.map((r) => r.itemCategory))].sort();
+  const caps: CategoryCap[] = [];
+  for (const category of categories) {
+    const rule = resolveRule(category, opts.corridorCode, onDate, rules, opts.direction);
+    if (!rule) continue;
+    caps.push({
+      category,
+      prohibited: rule.prohibited,
+      maxWeightKg: rule.maxWeightKg,
+      maxUnitsPerTraveler: rule.maxUnitsPerTraveler,
+      requiresDeclaration: rule.requiresDeclaration,
+      requiresSpecialPermit: rule.requiresSpecialPermit,
+      dutyApplies: rule.dutyApplies,
+      dutyNote: rule.dutyNote,
+    });
+  }
+  return caps;
+}
+
+// ── Manifest diversity (carrier protection — Constraint 2.1/2.2) ──────────────
+
+export interface ManifestLine {
+  category: string;
+  weightKg: number;
+}
+
+export interface ManifestDiversity {
+  /** Largest share (0–1) any single category occupies of the manifest weight. */
+  concentration: number;
+  dominantCategory: string | null;
+  totalWeightKg: number;
+  distinctCategories: number;
+  /** True if the bag looks commercial (over-concentrated) and should be flagged. */
+  looksCommercial: boolean;
+}
+
+/**
+ * Assess how "personal" a carrier's full bag looks. A bag dominated by one category
+ * reads as a commercial import to a customs officer (Constraint 2.2) and exposes the
+ * individual traveller. This PROTECTS the carrier — it flags concentration so the
+ * operator can diversify the manifest; it is not a tool to evade duties owed.
+ *
+ * `maxConcentration` (0–1) and `minDistinctForLarge` come from AppConfig.
+ */
+export function assessManifestDiversity(
+  lines: ManifestLine[],
+  opts: { maxConcentration: number; minWeightToAssessKg?: number },
+): ManifestDiversity {
+  const totalWeightKg = lines.reduce((s, l) => s + l.weightKg, 0);
+  const byCategory = new Map<string, number>();
+  for (const l of lines) {
+    byCategory.set(l.category, (byCategory.get(l.category) ?? 0) + l.weightKg);
+  }
+  let dominantCategory: string | null = null;
+  let dominantKg = 0;
+  for (const [cat, kg] of byCategory) {
+    if (kg > dominantKg) {
+      dominantKg = kg;
+      dominantCategory = cat;
+    }
+  }
+  const concentration = totalWeightKg > 0 ? dominantKg / totalWeightKg : 0;
+  const minWeight = opts.minWeightToAssessKg ?? 0;
+  const looksCommercial =
+    totalWeightKg >= minWeight &&
+    byCategory.size > 0 &&
+    concentration > opts.maxConcentration;
+
+  return {
+    concentration,
+    dominantCategory,
+    totalWeightKg,
+    distinctCategories: byCategory.size,
+    looksCommercial,
+  };
 }
