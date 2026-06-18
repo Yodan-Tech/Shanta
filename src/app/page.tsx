@@ -31,7 +31,7 @@ export default function Home() {
           <div className="mt-8 sm:mt-12 flex flex-col gap-3 sm:gap-4">
             <Link href="/send" className="w-full">
               <Button size="lg" className="w-full h-14 sm:h-16 text-base sm:text-lg font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-navy-900">
-                {t("sendPackage")}
+                {t("landingSendPackage")}
               </Button>
             </Link>
             <Link href="/login?next=/trips/new" className="w-full">
@@ -40,18 +40,13 @@ export default function Home() {
                 variant="outline"
                 className="w-full h-14 sm:h-16 text-base sm:text-lg font-semibold rounded-lg border-2 border-primary text-primary hover:bg-surface"
               >
-                {t("travelWithSpace")}
+                {t("landingCarryPackage")}
               </Button>
             </Link>
           </div>
-
-          {/* Subtle Hub Login Link */}
-          <div className="mt-8 sm:mt-10 text-center">
-            <p className="text-xs sm:text-sm text-muted mb-2">{t("hubLoginHint")}</p>
-            <Link href="/hub/login" className="text-xs sm:text-sm font-medium text-primary hover:underline">
-              {t("hubLogin")}
-            </Link>
-          </div>
+          <p className="mt-8 sm:mt-10 text-xs sm:text-sm text-muted">
+            {t("hubLoginHint")}
+          </p>
         </div>
       </main>
 

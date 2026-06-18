@@ -14,12 +14,12 @@
     "amharic": "አማርኛ"
   },
   "landing": {
-    "headline": "Send what matters through people you can trust",
-    "subhead": "Shanta connects senders with trusted travelers who have spare luggage space — with verified handoffs and escrow built in.",
-    "sendPackage": "Send a Package",
-    "travelWithSpace": "I'm Traveling with Space",
+    "headline": "Send or carry a package.",
+    "subhead": "Pick one action and move fast. Shanta connects senders, travelers, agents, hubs, and receivers with the least friction possible.",
+    "landingSendPackage": "Send a Package",
+    "landingCarryPackage": "Carry a Package",
     "hubLogin": "Hub login",
-    "hubLoginHint": "Are you a hub operator?"
+    "hubLoginHint": "Hub operators can sign in from the link below."
   },
   "auth": {
     "phoneTitle": "Sign in to Shanta",
