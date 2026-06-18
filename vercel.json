@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pnpm db:deploy && pnpm build",
+  "buildCommand": "pnpm build",
   "crons": [
     {
       "path": "/api/v1/cron/drain-notifications",
