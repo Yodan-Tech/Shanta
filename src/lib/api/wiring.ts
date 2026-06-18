@@ -1,5 +1,6 @@
 import { getRepositories } from "@/lib/db/prisma-repositories";
 import { getSmsSender } from "@/lib/sms/sender";
+import { getTelegramSender } from "@/lib/telegram/sender";
 import { DeliveryService } from "@/lib/services/delivery-service";
 import { NotificationService } from "@/lib/services/notification-service";
 import { publicEnv, serverEnv } from "@/lib/env";
@@ -14,7 +15,11 @@ export function deliveryService(): DeliveryService {
   });
 }
 
-/** Construct a NotificationService wired to the live repos and SMS sender. */
+/** Construct a NotificationService wired to the live repos, SMS + Telegram senders. */
 export function notificationService(): NotificationService {
-  return new NotificationService(getRepositories(), getSmsSender());
+  return new NotificationService(
+    getRepositories(),
+    getSmsSender(),
+    getTelegramSender(),
+  );
 }

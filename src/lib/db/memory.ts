@@ -26,11 +26,14 @@ import type {
   ConfigRepository,
   NotificationRepository,
   ProfileRepository,
+  ProfileContact,
   KycRepository,
   KycQueueItem,
   Repositories,
   CreateShipmentData,
   CreateTripData,
+  ActiveLegSummary,
+  ActiveLegsByRouteCriteria,
   ShipmentWithItems,
   TripWithLegs,
   ApplyTransitionInput,
@@ -83,6 +86,7 @@ export class InMemoryShipmentRepository implements ShipmentRepository {
       shipmentLegId: null,
       category: it.category,
       description: it.description,
+      quantity: it.quantity ?? 1,
       declaredWeightKg: D(it.declaredWeightKg),
       actualWeightKg: null,
       declaredValueEtb: it.declaredValueEtb != null ? D(it.declaredValueEtb) : null,
@@ -100,6 +104,7 @@ export class InMemoryShipmentRepository implements ShipmentRepository {
       receiverUserId: null,
       originRegion: data.originRegion,
       destinationRegion: data.destinationRegion,
+      serviceType: data.serviceType ?? "FULL",
       status: data.initialStatus,
       version: 0,
       idempotencyKey: data.idempotencyKey ?? null,
@@ -498,6 +503,7 @@ export class InMemoryTripRepository implements TripRepository {
       travelerId: data.travelerId,
       status: TripStatus.ACTIVE,
       mode: data.mode,
+      agentId: data.agentId ?? null,
       countryCode: data.countryCode,
       version: 0,
       createdAt: now,
@@ -516,6 +522,35 @@ export class InMemoryTripRepository implements TripRepository {
 
   async searchCandidates(): Promise<TravelerCandidate[]> {
     return this.candidates;
+  }
+
+  async listActiveLegsByRoute(
+    criteria: ActiveLegsByRouteCriteria,
+  ): Promise<ActiveLegSummary[]> {
+    const out: ActiveLegSummary[] = [];
+    for (const trip of this.trips.values()) {
+      if (trip.status !== TripStatus.ACTIVE) continue;
+      for (const leg of trip.legs) {
+        if (
+          leg.originRegion === criteria.originRegion &&
+          leg.destinationRegion === criteria.destinationRegion &&
+          leg.status === TripLegStatus.ACTIVE &&
+          Number(leg.availableCapacityKg) > 0 &&
+          leg.departAt.getTime() >= criteria.fromDate.getTime()
+        ) {
+          out.push({
+            tripLegId: leg.id,
+            travelerId: trip.travelerId,
+            originRegion: leg.originRegion,
+            destinationRegion: leg.destinationRegion,
+            departAt: leg.departAt,
+            availableCapacityKg: Number(leg.availableCapacityKg),
+          });
+        }
+      }
+    }
+    out.sort((a, b) => a.departAt.getTime() - b.departAt.getTime());
+    return out.slice(0, criteria.limit);
   }
 }
 
@@ -601,9 +636,18 @@ export class InMemoryNotificationRepository implements NotificationRepository {
 export class InMemoryProfileRepository implements ProfileRepository {
   /** Map userId → phone. Set directly in tests that need it. */
   readonly phones = new Map<string, string>();
+  /** Map userId → linked Telegram id. Set directly in tests that need it. */
+  readonly telegramIds = new Map<string, string>();
 
   async getPhone(userId: string): Promise<string | null> {
     return this.phones.get(userId) ?? null;
+  }
+
+  async getContact(userId: string): Promise<ProfileContact | null> {
+    const phone = this.phones.get(userId) ?? null;
+    const telegramUserId = this.telegramIds.get(userId) ?? null;
+    if (phone === null && telegramUserId === null) return null;
+    return { phone, telegramUserId };
   }
 }
 

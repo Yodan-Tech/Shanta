@@ -2,14 +2,11 @@
 
 import { useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/logo";
 
-export default function ConfirmDeliveryPage() {
-  const t = useTranslations("confirm");
+export default function ConfirmPickupPage() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
 
@@ -19,7 +16,9 @@ export default function ConfirmDeliveryPage() {
   const [photo, setPhoto] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [error, setError] = useState<string | null>(token ? null : "Invalid delivery link");
+  const [error, setError] = useState<string | null>(
+    token ? null : "Invalid pickup link",
+  );
   const [showProblem, setShowProblem] = useState(false);
   const [problem, setProblem] = useState("");
 
@@ -33,7 +32,7 @@ export default function ConfirmDeliveryPage() {
         videoRef.current.srcObject = stream;
         setCameraOpen(true);
       }
-    } catch (err) {
+    } catch {
       setError("Unable to access camera");
     }
   }
@@ -122,7 +121,6 @@ export default function ConfirmDeliveryPage() {
     }
   }
 
-  // Invalid token
   if (!token) {
     return (
       <div className="flex min-h-screen flex-col bg-background">
@@ -133,7 +131,9 @@ export default function ConfirmDeliveryPage() {
           <Card className="w-full max-w-md text-center">
             <CardHeader>
               <CardTitle>Invalid Link</CardTitle>
-              <CardDescription>This delivery confirmation link is invalid or has expired.</CardDescription>
+              <CardDescription>
+                This pickup confirmation link is invalid or has expired.
+              </CardDescription>
             </CardHeader>
           </Card>
         </main>
@@ -141,12 +141,11 @@ export default function ConfirmDeliveryPage() {
     );
   }
 
-  // Success screen
   if (success) {
-    const successTitle = showProblem ? "Dispute Submitted" : "Confirmed";
+    const successTitle = showProblem ? "Dispute Submitted" : "Pickup Confirmed";
     const successDesc = showProblem
       ? "Your dispute has been submitted and will be reviewed by our team."
-      : "Thank you for confirming delivery. Your payment is secure in escrow.";
+      : "Thank you for confirming pickup at the hub. Your payment is secure in escrow.";
 
     return (
       <div className="flex min-h-screen flex-col bg-background">
@@ -166,7 +165,6 @@ export default function ConfirmDeliveryPage() {
     );
   }
 
-  // Dispute form
   if (showProblem) {
     return (
       <div className="flex min-h-screen flex-col bg-background">
@@ -176,7 +174,7 @@ export default function ConfirmDeliveryPage() {
         <main className="flex-1 px-6 py-10">
           <div className="max-w-md mx-auto">
             <h1 className="text-3xl font-bold text-foreground mb-2">Report Issue</h1>
-            <p className="text-muted mb-8">Let us know what went wrong with this delivery</p>
+            <p className="text-muted mb-8">Let us know what went wrong with this pickup</p>
 
             <Card>
               <div className="px-6 py-6 space-y-4">
@@ -193,7 +191,11 @@ export default function ConfirmDeliveryPage() {
                   />
                 </div>
 
-                {error && <div className="bg-red-50 border border-danger rounded p-3 text-danger text-sm">{error}</div>}
+                {error && (
+                  <div className="bg-red-50 border border-danger rounded p-3 text-danger text-sm">
+                    {error}
+                  </div>
+                )}
 
                 <div className="flex gap-3">
                   <Button
@@ -222,7 +224,6 @@ export default function ConfirmDeliveryPage() {
     );
   }
 
-  // Main confirm screen
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <header className="flex items-center px-6 py-4 border-b border-border">
@@ -230,14 +231,13 @@ export default function ConfirmDeliveryPage() {
       </header>
       <main className="flex-1 px-6 py-10">
         <div className="max-w-md mx-auto">
-          <h1 className="text-3xl font-bold text-foreground mb-2">{t("title")}</h1>
-          <p className="text-muted mb-8">{t("subtitle")}</p>
+          <h1 className="text-3xl font-bold text-foreground mb-2">Confirm Pickup</h1>
+          <p className="text-muted mb-8">Your package is waiting at the hub.</p>
 
-          {/* Camera Section */}
           {!photo ? (
             <Card className="mb-6">
               <CardHeader>
-                <CardTitle className="text-lg">Take Delivery Photo</CardTitle>
+                <CardTitle className="text-lg">Take Pickup Photo</CardTitle>
                 <CardDescription>Live camera capture required</CardDescription>
               </CardHeader>
               <div className="px-6 pb-6 space-y-4">
@@ -272,7 +272,7 @@ export default function ConfirmDeliveryPage() {
           ) : (
             <Card className="mb-6">
               <div className="px-6 py-6 space-y-4">
-                <img src={photo} alt="Delivery" className="w-full rounded-lg mb-4" />
+                <img src={photo} alt="Pickup" className="w-full rounded-lg mb-4" />
                 <Button
                   type="button"
                   variant="outline"
@@ -285,10 +285,12 @@ export default function ConfirmDeliveryPage() {
             </Card>
           )}
 
-          {/* Error */}
-          {error && <div className="bg-red-50 border border-danger rounded p-3 text-danger text-sm mb-6">{error}</div>}
+          {error && (
+            <div className="bg-red-50 border border-danger rounded p-3 text-danger text-sm mb-6">
+              {error}
+            </div>
+          )}
 
-          {/* Actions */}
           <div className="flex gap-3">
             <Button
               type="button"
@@ -305,7 +307,7 @@ export default function ConfirmDeliveryPage() {
               disabled={loading || !photo}
               className="flex-1 bg-success text-success-foreground hover:bg-green-700"
             >
-              {loading ? "Confirming..." : "Confirm Delivery"}
+              {loading ? "Confirming..." : "Confirm Pickup"}
             </Button>
           </div>
         </div>

@@ -15,6 +15,17 @@
 > the "Tech Stack" section and docs below. The **domain model, state machine, rules engine,
 > all 5 constraints, escrow design, and phasing are unchanged.**
 
+> ⚠️ **Phase 1 expansion — [ADR-0002](docs/DECISIONS.md) + [ADR-0003](docs/DECISIONS.md).**
+> (1) **Auth is multi-channel:** email-OTP + Telegram-OTP added, **phone-OTP kept** (toggleable).
+> Receivers still SMS-only (no login). (2) **A full self-serve Telegram bot** is a first-class
+> interface (browse travelers, "what can I pack", post send/trip, status) + a free notification
+> channel. (3) **Routes are first-class** (`RouteConfig`); **Ethio↔Dubai is live now** alongside
+> intra-ET (founder override of the Phase-2-international guardrail). (4) **Customs intelligence**
+> (per-person unit caps e.g. 1 laptop/person, duty transparency, manifest-diversity carrier
+> protection) — built **compliance-positive only** (see exclusion #10 below). (5) **Aggregation-only
+> service** + **airport-agent** supply node. (6) **Data-intelligence** capture + admin endpoints.
+> Cross-border payment stays manual hub escrow (OQ-1); Dubai caps research-seeded (OQ-3, OQ-11).
+
 ---
 
 ## What Shanta Is
@@ -165,6 +176,14 @@ pan-African expansion.
    is premature infrastructure and a privacy/battery cost with no validated demand.
 9. **Microservices, Kubernetes, GraphQL, websockets, multi-region, full-text search, A/B infra,
    fraud-detection ML.** All premature for Phase 1 load — see [GUARDRAILS.md](GUARDRAILS.md).
+10. **A duty-avoidance / customs-structuring optimizer.** We build customs intelligence
+    **compliance-positive only**: per-person *lawful personal-use* allowance enforcement,
+    transparent declarable/duty info, and manifest-diversity flags that **protect** an
+    individual carrier from unknowingly looking commercial. We do **not** build (or market) a
+    tool that fragments a known-commercial consignment across people to defeat customs'
+    commercial thresholds and avoid duties owed — that is customs structuring/evasion, with
+    real legal exposure for Shanta and for the carriers who get stopped. Positioning is a
+    founder + customs-counsel decision (OQ-11); the engine itself is neutral (ADR-0003).
 
 Rule: **every "not now" has a reason** — the reason is the value. If you can't state why something
 is excluded, you don't understand the exclusion well enough to make it.

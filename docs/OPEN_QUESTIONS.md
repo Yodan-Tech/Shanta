@@ -185,7 +185,44 @@ calls Africa's Talking). Introduced by [ADR-0001](DECISIONS.md).
 Talking Send-SMS hook before any external user.
 **Architectural paths:** built-in provider (fastest, paid, coverage TBD) vs custom AT hook
 (matches Phase 0 SMS choice, ET coverage). No data-model impact either way.
-**Last updated:** Phase 1 kickoff.
+**Update (2026-06-16, ADR-0002):** OTP login now also runs over **email + Telegram**. SMS is
+therefore **notification-only + optional phone OTP**, no longer the sole OTP path — this
+de-risks OQ-10 for launch (abroad users sign in without SMS).
+**Last updated:** 2026-06-16.
+
+---
+
+## OQ-11: How is the customs-intelligence feature publicly positioned?
+
+**Question:** Shanta encodes per-route, per-person customs caps and flags commercial-looking
+manifests. How is this **marketed/positioned** to users — as compliance + carrier protection,
+or (the founder's stated intent) as duty-avoidance optimization?
+**Why it matters:** The *engine* is neutral (records lawful personal-use allowances,
+declarable/duty info, and manifest-diversity flags that protect the individual traveler).
+But positioning/marketing it as a way to **defeat customs' commercial thresholds and avoid
+duties owed** is customs structuring/evasion — real legal exposure for Shanta and for the
+carriers who get stopped. Engineering built the **compliance-positive** version only (ADR-0003);
+the duty-avoidance optimizer was **not** built.
+**Priority:** **BLOCKS external marketing copy** for the customs feature. Does not block the
+engine (already shipped, compliance-framed).
+**Who decides:** Founder + Ethiopian customs counsel — **not** engineering.
+**Default assumption if undecided:** Present as compliance + carrier protection + transparency.
+**Last updated:** 2026-06-16.
+
+---
+
+## OQ-12: Telegram bot operations — token custody, webhook secret, rate limits.
+
+**Question:** Who owns the @BotFather bot token, the webhook secret rotation, and the bot's
+abuse/rate-limit policy at pilot scale?
+**Why it matters:** The bot is a full self-serve surface (login, post send/trip, browse). Token
+leakage = account-mint abuse; no rate limit = spam. `TELEGRAM_BOT_TOKEN` /
+`TELEGRAM_WEBHOOK_SECRET` must be set before going live.
+**Priority:** **BLOCKS real bot launch** (dev works with the logging sender).
+**Who decides:** Founder (token) + tech lead (webhook/rate policy).
+**Default assumption if undecided:** Bot disabled until both secrets are set; webhook rejects
+calls without the secret token.
+**Last updated:** 2026-06-16.
 
 ---
 

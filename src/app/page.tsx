@@ -29,12 +29,12 @@ export default function Home() {
 
           {/* Two Big Action Buttons */}
           <div className="mt-8 sm:mt-12 flex flex-col gap-3 sm:gap-4">
-            <Link href="/login?action=send" className="w-full">
+            <Link href="/send" className="w-full">
               <Button size="lg" className="w-full h-14 sm:h-16 text-base sm:text-lg font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-navy-900">
                 {t("sendPackage")}
               </Button>
             </Link>
-            <Link href="/login?action=travel" className="w-full">
+            <Link href="/login?next=/trips/new" className="w-full">
               <Button
                 size="lg"
                 variant="outline"

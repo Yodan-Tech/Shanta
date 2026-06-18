@@ -95,6 +95,64 @@ async function main() {
         sourceRegulation: UNVERIFIED,
         effectiveFrom: EFFECTIVE_FROM,
       },
+
+      // --- International (Ethio↔Dubai) personal-use caps — ADR-0003 ---
+      // Compliance-positive: each cap is one traveler's LAWFUL personal-use allowance
+      // entering Ethiopia, with transparent duty info. Not duty-avoidance advice.
+      {
+        itemCategory: "LAPTOP",
+        corridorCode: "DUBAI_ET",
+        maxUnitsPerTraveler: 1,
+        dutyApplies: true,
+        dutyNote:
+          "Customs typically treats 1 laptop as personal use; a 2nd+ may be flagged as commercial and taxed.",
+        requiresDeclaration: true,
+        direction: RestrictionDirection.ENTRY,
+        notes: "Personal-use allowance: 1 laptop per traveler into Ethiopia.",
+        sourceRegulation: UNVERIFIED,
+        effectiveFrom: EFFECTIVE_FROM,
+      },
+      {
+        itemCategory: "PHONE",
+        corridorCode: "DUBAI_ET",
+        maxUnitsPerTraveler: 2,
+        dutyApplies: true,
+        dutyNote: "1–2 phones usually personal; several identical phones read as commercial.",
+        requiresDeclaration: true,
+        direction: RestrictionDirection.ENTRY,
+        notes: "Personal-use allowance: up to 2 phones per traveler into Ethiopia.",
+        sourceRegulation: UNVERIFIED,
+        effectiveFrom: EFFECTIVE_FROM,
+      },
+      {
+        itemCategory: "COSMETICS",
+        corridorCode: "DUBAI_ET",
+        maxWeightKg: "5.0",
+        dutyApplies: true,
+        dutyNote: "Quantities beyond personal use may attract duty.",
+        direction: RestrictionDirection.ENTRY,
+        notes: "Cosmetics personal-use guideline into Ethiopia.",
+        sourceRegulation: UNVERIFIED,
+        effectiveFrom: EFFECTIVE_FROM,
+      },
+      {
+        itemCategory: "BABY_PRODUCTS",
+        corridorCode: "DUBAI_ET",
+        maxWeightKg: "10.0",
+        direction: RestrictionDirection.ENTRY,
+        notes: "Baby products personal-use guideline into Ethiopia.",
+        sourceRegulation: UNVERIFIED,
+        effectiveFrom: EFFECTIVE_FROM,
+      },
+      {
+        itemCategory: "CLOTHING",
+        corridorCode: "DUBAI_ET",
+        maxWeightKg: "15.0",
+        direction: RestrictionDirection.ENTRY,
+        notes: "New clothing in bulk can read as commercial; personal-use guideline.",
+        sourceRegulation: UNVERIFIED,
+        effectiveFrom: EFFECTIVE_FROM,
+      },
     ],
   });
 
@@ -108,6 +166,10 @@ async function main() {
     { originRegion: "Addis Ababa", destinationRegion: "Mekelle" },
     { originRegion: "Hawassa", destinationRegion: "Addis Ababa" },
     { originRegion: "Dire Dawa", destinationRegion: "Addis Ababa" },
+    // International (Ethio↔Dubai) — provisional ETB pricing; cross-border payment
+    // stays manual hub escrow (OQ-1). ADR-0003.
+    { originRegion: "Dubai", destinationRegion: "Addis Ababa" },
+    { originRegion: "Addis Ababa", destinationRegion: "Dubai" },
   ];
   await prisma.corridorPricing.createMany({
     data: corridors.map((c) => ({
@@ -120,6 +182,40 @@ async function main() {
       taxRate: "0.0000",
       effectiveFrom: EFFECTIVE_FROM,
     })),
+  });
+
+  // --- Route configs (per-route behavior layer, ADR-0003) ---
+  // code == the corridorCode used for rule overrides. Intra-ET routes are domestic;
+  // Ethio↔Dubai are international with customs intelligence on (ENTRY into ET / EXIT).
+  await prisma.routeConfig.deleteMany();
+  await prisma.routeConfig.createMany({
+    data: [
+      ...corridors
+        .filter((c) => c.originRegion !== "Dubai" && c.destinationRegion !== "Dubai")
+        .map((c, i) => ({
+          code: `ET_${i}_${c.destinationRegion.replace(/\s+/g, "_").toUpperCase()}`,
+          originRegion: c.originRegion,
+          destinationRegion: c.destinationRegion,
+          international: false,
+          customsIntelligence: false,
+        })),
+      {
+        code: "DUBAI_ET",
+        originRegion: "Dubai",
+        destinationRegion: "Addis Ababa",
+        international: true,
+        customsIntelligence: true,
+        config: { direction: "ENTRY" },
+      },
+      {
+        code: "ET_DUBAI",
+        originRegion: "Addis Ababa",
+        destinationRegion: "Dubai",
+        international: true,
+        customsIntelligence: true,
+        config: { direction: "EXIT" },
+      },
+    ],
   });
 
   // --- Runtime config thresholds ---
@@ -161,6 +257,28 @@ async function main() {
       value: { value: 1 },
       description:
         "Whether manual hub escrow is armed by default (1=yes, 0=no). Escrow is optional — it cannot always be provided; a shipment without it still flows end-to-end.",
+    },
+  });
+
+  // --- Manifest diversity (carrier protection — Constraint 2.1/2.2) ---
+  await prisma.appConfig.upsert({
+    where: { key: "manifest.max_category_concentration" },
+    update: {},
+    create: {
+      key: "manifest.max_category_concentration",
+      value: { value: 0.6 },
+      description:
+        "Max share (0–1) of a carrier's manifest weight one category may occupy before the bag is flagged as looking commercial (protects the traveler).",
+    },
+  });
+  await prisma.appConfig.upsert({
+    where: { key: "manifest.min_weight_to_assess_kg" },
+    update: {},
+    create: {
+      key: "manifest.min_weight_to_assess_kg",
+      value: { value: 3 },
+      description:
+        "Minimum manifest weight (kg) before the commercial-look concentration check applies.",
     },
   });
 

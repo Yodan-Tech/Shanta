@@ -4,6 +4,7 @@ import { Role, type Profile, type AdminUser } from "@prisma/client";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { needsOnboarding } from "@/lib/roles";
+import { TELEGRAM_EMAIL_DOMAIN } from "@/lib/env";
 
 /** The authenticated Supabase user, or null. */
 export async function getAuthUser(): Promise<User | null> {
@@ -23,12 +24,24 @@ export async function getOrCreateProfile(): Promise<Profile | null> {
   const user = await getAuthUser();
   if (!user) return null;
 
+  // Mirror real contact channels from auth.users. Synthetic Telegram emails
+  // (tg_*@telegram.shanta.app) are NOT mirrored onto profile.email — that field is
+  // reserved for real email-OTP logins; Telegram identity lives in telegramUserId.
+  const realEmail =
+    user.email && !user.email.endsWith(`@${TELEGRAM_EMAIL_DOMAIN}`)
+      ? user.email
+      : undefined;
+
   return prisma.profile.upsert({
     where: { id: user.id },
-    update: user.phone ? { phone: user.phone } : {},
+    update: {
+      ...(user.phone ? { phone: user.phone } : {}),
+      ...(realEmail ? { email: realEmail } : {}),
+    },
     create: {
       id: user.id,
       ...(user.phone ? { phone: user.phone } : {}),
+      ...(realEmail ? { email: realEmail } : {}),
       roles: [Role.RECEIVER],
     },
   });

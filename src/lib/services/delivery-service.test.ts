@@ -62,7 +62,7 @@ async function outForDelivery() {
 describe("DeliveryService.deliver (Constraint 2.2 live capture)", () => {
   it("delivers with a live photo, issues a token, and queues a receiver SMS notification", async () => {
     const id = await outForDelivery();
-    const out = await delivery.deliver({ shipmentId: id, courierId: COURIER, photoUrls: ["live.jpg"], captureMethod: CaptureMethod.LIVE });
+    const out = await delivery.deliver({ shipmentId: id, operatorId: COURIER, photoUrls: ["live.jpg"], captureMethod: CaptureMethod.LIVE });
     expect(out.shipment.status).toBe(ShipmentStatus.DELIVERED);
     expect(out.token).toBeTruthy();
     // Notification queued atomically with the DELIVERED transition.
@@ -77,7 +77,7 @@ describe("DeliveryService.deliver (Constraint 2.2 live capture)", () => {
   it("rejects a gallery (non-live) delivery photo", async () => {
     const id = await outForDelivery();
     await expect(
-      delivery.deliver({ shipmentId: id, courierId: COURIER, photoUrls: ["g.jpg"], captureMethod: CaptureMethod.GALLERY }),
+      delivery.deliver({ shipmentId: id, operatorId: COURIER, photoUrls: ["g.jpg"], captureMethod: CaptureMethod.GALLERY }),
     ).rejects.toMatchObject({ code: "UNPROCESSABLE" });
   });
 });
@@ -85,7 +85,7 @@ describe("DeliveryService.deliver (Constraint 2.2 live capture)", () => {
 describe("DeliveryService.confirmByToken (SMS-first receiver)", () => {
   async function delivered() {
     const id = await outForDelivery();
-    const { token } = await delivery.deliver({ shipmentId: id, courierId: COURIER, photoUrls: ["live.jpg"], captureMethod: CaptureMethod.LIVE });
+    const { token } = await delivery.deliver({ shipmentId: id, operatorId: COURIER, photoUrls: ["live.jpg"], captureMethod: CaptureMethod.LIVE });
     return { id, token };
   }
 

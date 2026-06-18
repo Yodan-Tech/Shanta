@@ -17,6 +17,7 @@ import type {
   TripLegStatus,
   TripStatus,
   Notification,
+  ServiceType,
 } from "@prisma/client";
 import type { RuleInput, PricingRule } from "@/lib/domain/types";
 import type { TravelerCandidate } from "@/lib/domain/matching";
@@ -41,6 +42,8 @@ export type TripWithLegs = Trip & { legs: TripLeg[] };
 export interface CreateItemData {
   category: string;
   description: string;
+  /** Units of this item (default 1) — drives per-person unit caps (e.g. laptops). */
+  quantity?: number | undefined;
   declaredWeightKg: number;
   declaredValueEtb?: number | undefined;
 }
@@ -51,6 +54,8 @@ export interface CreateShipmentData {
   receiverPhone: string;
   originRegion: string;
   destinationRegion: string;
+  /** FULL (default) or AGGREGATION_ONLY (consolidation/handoff, no platform carrier). */
+  serviceType?: ServiceType;
   countryCode: string;
   insuranceOptedIn: boolean;
   idempotencyKey?: string;
@@ -103,6 +108,8 @@ export interface CreateTripLegData {
 export interface CreateTripData {
   travelerId: string;
   mode: Trip["mode"];
+  /** Airport agent (Profile id) registering this trip on the traveler's behalf. */
+  agentId?: string;
   countryCode: string;
   legs: CreateTripLegData[];
 }
@@ -113,6 +120,23 @@ export interface CandidateSearchCriteria {
   windowStart: Date;
   windowEnd: Date;
   itemCategory: string;
+}
+
+/** Lightweight "who's traveling" summary for browse surfaces (bot, supply analytics). */
+export interface ActiveLegSummary {
+  tripLegId: string;
+  travelerId: string;
+  originRegion: string;
+  destinationRegion: string;
+  departAt: Date;
+  availableCapacityKg: number;
+}
+
+export interface ActiveLegsByRouteCriteria {
+  originRegion: string;
+  destinationRegion: string;
+  fromDate: Date;
+  limit: number;
 }
 
 // ── Escrow: arm-on-create + status changes (each atomic with the shipment) ────
@@ -183,6 +207,10 @@ export interface TripRepository {
   searchCandidates(
     criteria: CandidateSearchCriteria,
   ): Promise<TravelerCandidate[]>;
+  /** Browse: active upcoming trip legs on a route (no crowding/category filter). */
+  listActiveLegsByRoute(
+    criteria: ActiveLegsByRouteCriteria,
+  ): Promise<ActiveLegSummary[]>;
 }
 
 export interface RuleRepository {
@@ -300,9 +328,17 @@ export interface NotificationRepository {
   incrementAttempts(id: string): Promise<void>;
 }
 
+/** A user's reachable contact channels, for notification routing. */
+export interface ProfileContact {
+  phone: string | null;
+  telegramUserId: string | null;
+}
+
 /** Profile reads needed by the notification drain worker. */
 export interface ProfileRepository {
   getPhone(userId: string): Promise<string | null>;
+  /** Phone + linked Telegram id — drain prefers Telegram (free) when linked. */
+  getContact(userId: string): Promise<ProfileContact | null>;
 }
 
 // ── Matching assignment + traveler accept/reject (Constraints 2.1 + 2.2) ───────

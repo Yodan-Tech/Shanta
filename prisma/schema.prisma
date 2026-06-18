@@ -26,6 +26,7 @@ enum Role {
   TRAVELER
   AGGREGATOR
   RECEIVER
+  AIRPORT_AGENT // informal forwarder at the airport — collects items + brings travelers (supply node)
 }
 
 enum TravelerTier {
@@ -86,6 +87,7 @@ enum HubType {
   ORIGIN
   TRANSIT
   DESTINATION
+  AGENT // airport-agent collection point (mobile/informal aggregator)
 }
 
 enum HubStatus {
@@ -105,6 +107,7 @@ enum ShipmentStatus {
   WEIGHT_DISCREPANCY
   CONTENTS_VERIFIED
   SEALED
+  CONSOLIDATED // aggregation-only: items consolidated at hub, ready for pickup/handoff (no platform carrier)
   AWAITING_MATCH
   MATCHED_TO_TRAVELER
   TRAVELER_REVIEWED
@@ -187,6 +190,25 @@ enum EscrowStatus {
 enum NotificationChannel {
   SMS
   PUSH
+  TELEGRAM
+}
+
+enum ServiceType {
+  FULL // matching + carry + aggregation
+  AGGREGATION_ONLY // consolidation/handoff only; sender supplies their own carrier
+}
+
+enum DemandSignalSource {
+  SEARCH // a sender/bot searched a route
+  NO_MATCH // a search/match attempt found no available carrier (unmet demand)
+  BOT_QUERY // a Telegram-bot "what's available / what can I pack" query
+}
+
+enum CustomsOutcome {
+  CLEARED
+  FLAGGED
+  TAXED
+  SEIZED
 }
 
 enum NotificationStatus {
@@ -221,6 +243,10 @@ enum WebhookProvider {
 model Profile {
   id                String        @id @db.Uuid
   phone             String?       @unique // mirrored from auth.users for convenience
+  email             String?       @unique // login channel for diaspora/abroad users (email-OTP)
+  telegramUserId    String?       @unique // Telegram numeric id (login + notification channel)
+  telegramUsername  String? // @handle (display only; may change)
+  telegramLinkedAt  DateTime?
   fullName          String?
   roles             Role[]        @default([RECEIVER])
   travelerTier      TravelerTier?
@@ -291,6 +317,7 @@ model Trip {
   traveler    Profile    @relation(fields: [travelerId], references: [id])
   status      TripStatus @default(DRAFT)
   mode        TripMode
+  agentId     String?    @db.Uuid // airport agent (Profile) who registered this trip on the traveler's behalf
   countryCode String     @default("ET")
   version     Int        @default(0)
   createdAt   DateTime   @default(now())
@@ -367,6 +394,7 @@ model Shipment {
   receiverUser        Profile?       @relation("ShipmentReceiver", fields: [receiverUserId], references: [id])
   originRegion        String
   destinationRegion   String
+  serviceType         ServiceType    @default(FULL)
   status              ShipmentStatus @default(DRAFT)
   version             Int            @default(0)
   idempotencyKey      String?
@@ -433,6 +461,7 @@ model Item {
   shipmentLeg      ShipmentLeg? @relation(fields: [shipmentLegId], references: [id])
   category         String
   description      String
+  quantity         Int          @default(1) // units of this item (per-person unit caps, e.g. laptops)
   declaredWeightKg Decimal      @db.Decimal(10, 3)
   actualWeightKg   Decimal?     @db.Decimal(10, 3)
   declaredValueEtb Decimal?     @db.Decimal(12, 2)
@@ -491,6 +520,9 @@ model ItemRestriction {
   overrides             ItemRestriction[]    @relation("CorridorOverride")
   maxWeightKg           Decimal?             @db.Decimal(10, 3)
   maxValueEtb           Decimal?             @db.Decimal(12, 2)
+  maxUnitsPerTraveler   Int? // per-person personal-use unit cap (e.g. 1 laptop/person into ET)
+  dutyApplies           Boolean              @default(false) // transparency: item is declarable/taxable on this route
+  dutyNote              String? // human-readable "what to expect at customs" note (declarable/taxable info)
   frequencySensitive    Boolean              @default(false)
   maxWeightKgFrequent   Decimal?             @db.Decimal(10, 3)
   requiresDeclaration   Boolean              @default(false)
@@ -682,4 +714,71 @@ model IdempotencyKey {
   createdAt    DateTime @default(now())
 
   @@map("idempotency_keys")
+}
+
+// ─────────────────────────── Routes (per-route behavior config) ───────────────────────────
+
+/// Per-route behavior layer. Pricing/rules already key off region pairs; this adds the
+/// route-specific behavior (international, currency, customs intelligence, allowed services)
+/// so each route is unique without hardcoding any route in code. See ADR-0003.
+model RouteConfig {
+  id                   String   @id @default(uuid()) @db.Uuid
+  code                 String   @unique // e.g. "ADDIS_DUBAI"
+  originRegion         String
+  destinationRegion    String
+  international        Boolean  @default(false)
+  currency             String   @default("ETB")
+  customsIntelligence  Boolean  @default(false) // run per-unit/duty customs checks for this route
+  allowAggregationOnly Boolean  @default(true)
+  config               Json? // free-form per-route behavior (aggregation model, notes)
+  active               Boolean  @default(true)
+  countryCode          String   @default("ET")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([originRegion, destinationRegion])
+  @@index([active])
+  @@map("route_configs")
+}
+
+// ─────────────────────────── Data intelligence (capture) ───────────────────────────
+
+/// Unmet/observed demand. Logged when a sender or the bot searches a route or finds no
+/// carrier — "what products are needed where". Feeds the admin intelligence dashboards.
+model DemandSignal {
+  id                String             @id @default(uuid()) @db.Uuid
+  originRegion      String
+  destinationRegion String
+  itemCategory      String?
+  source            DemandSignalSource
+  actorId           String?            @db.Uuid // Profile id if known (soft ref)
+  detail            Json?
+  countryCode       String             @default("ET")
+  createdAt         DateTime           @default(now())
+
+  @@index([originRegion, destinationRegion, createdAt])
+  @@index([itemCategory])
+  @@index([source])
+  @@map("demand_signals")
+}
+
+/// Real customs outcome capture — what customs actually flagged/taxed, by item/route/frequency.
+/// Lets Shanta *learn* and feed reality back into the rules engine (admin-recorded).
+model CustomsEvent {
+  id                    String                @id @default(uuid()) @db.Uuid
+  shipmentId            String?               @db.Uuid // soft ref (event may be reported without a shipment)
+  itemCategory          String
+  originRegion          String
+  destinationRegion     String
+  outcome               CustomsOutcome
+  travelerFrequencyTier CustomsFrequencyTier?
+  taxAmountEtb          Decimal?              @db.Decimal(12, 2)
+  detail                Json?
+  recordedBy            String?               @db.Uuid // AdminUser id (soft ref)
+  countryCode           String                @default("ET")
+  createdAt             DateTime              @default(now())
+
+  @@index([itemCategory, outcome])
+  @@index([originRegion, destinationRegion])
+  @@map("customs_events")
 }
