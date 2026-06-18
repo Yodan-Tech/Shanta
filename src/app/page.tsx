@@ -34,7 +34,7 @@ export default function Home() {
                 {t("landingSendPackage")}
               </Button>
             </Link>
-            <Link href="/login?next=/trips/new" className="w-full">
+            <Link href="/carry" className="w-full">
               <Button
                 size="lg"
                 variant="outline"

@@ -16,6 +16,19 @@ import { isValidEmail, isValidPhone } from "@/lib/validators";
 
 type Channel = "email" | "phone";
 
+const DRAFT_KEYS = [
+  "originRegion",
+  "destinationRegion",
+  "weightKg",
+  "category",
+  "description",
+  "receiverName",
+  "receiverPhone",
+  "departAt",
+  "capacityKg",
+  "mode",
+];
+
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -24,27 +37,31 @@ export default function LoginPage() {
   const destinationRegion = searchParams.get("destinationRegion") ?? "";
   const weightKg = searchParams.get("weightKg") ?? "";
   const category = searchParams.get("category") ?? "";
-  const description = searchParams.get("description") ?? "";
   const receiverName = searchParams.get("receiverName") ?? "";
-  const receiverPhone = searchParams.get("receiverPhone") ?? "";
+  const departAt = searchParams.get("departAt") ?? "";
+  const capacityKg = searchParams.get("capacityKg") ?? "";
+  const mode = searchParams.get("mode") ?? "";
+  const isCarryFlow = nextHref.startsWith("/trips");
+
   const intentSummary = useMemo(() => {
     if (!originRegion || !destinationRegion) return null;
-    const parts = [`${originRegion} → ${destinationRegion}`];
-    if (weightKg) parts.push(`${weightKg} kg`);
-    if (category) parts.push(category);
-    return `You are one step away from sending ${parts.join(" · ")}.`;
-  }, [category, destinationRegion, originRegion, weightKg]);
+    const parts = [`${originRegion} to ${destinationRegion}`];
+    if (isCarryFlow && capacityKg) parts.push(`${capacityKg} kg available`);
+    if (!isCarryFlow && weightKg) parts.push(`${weightKg} kg`);
+    if (!isCarryFlow && category) parts.push(category);
+    return isCarryFlow
+      ? `You are one step away from publishing ${parts.join(" - ")}.`
+      : `You are one step away from sending ${parts.join(" - ")}.`;
+  }, [capacityKg, category, destinationRegion, isCarryFlow, originRegion, weightKg]);
+
   const draftQuery = useMemo(() => {
     const params = new URLSearchParams();
-    if (originRegion) params.set("originRegion", originRegion);
-    if (destinationRegion) params.set("destinationRegion", destinationRegion);
-    if (weightKg) params.set("weightKg", weightKg);
-    if (category) params.set("category", category);
-    if (description) params.set("description", description);
-    if (receiverName) params.set("receiverName", receiverName);
-    if (receiverPhone) params.set("receiverPhone", receiverPhone);
+    for (const key of DRAFT_KEYS) {
+      const value = searchParams.get(key);
+      if (value) params.set(key, value);
+    }
     return params.toString();
-  }, [category, description, destinationRegion, originRegion, receiverName, receiverPhone, weightKg]);
+  }, [searchParams]);
 
   async function redirectToVerify(channel: Channel, contact: string) {
     const params = new URLSearchParams();
@@ -59,8 +76,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(20,31,61,0.12),_transparent_38%),linear-gradient(180deg,#f8fafc_0%,#ffffff_60%,#fff8ea_100%)]">
-      <header className="flex items-center justify-between border-b border-border/60 bg-white/70 px-4 py-3 backdrop-blur">
+    <div className="min-h-screen bg-background">
+      <header className="flex items-center justify-between border-b border-border px-4 py-3">
         <Logo />
         <LocaleSwitcher />
       </header>
@@ -75,22 +92,22 @@ export default function LoginPage() {
               Almost there.
             </h1>
             <p className="max-w-2xl text-base text-muted sm:text-lg">
-              We already know your route. Choose the lightest login option that fits you and
-              we&apos;ll carry your booking context forward.
+              Your route is already captured. Choose the lightest login option and
+              Shanta will carry your context forward.
             </p>
           </div>
 
           {intentSummary && (
             <Card className="border-navy/15 bg-navy/5">
               <CardHeader>
-                <CardTitle>Booking context</CardTitle>
+                <CardTitle>{isCarryFlow ? "Trip context" : "Booking context"}</CardTitle>
                 <CardDescription>{intentSummary}</CardDescription>
               </CardHeader>
               <div className="grid gap-3 px-6 pb-6 sm:grid-cols-2">
-                <MiniStat label="Route" value={`${originRegion} → ${destinationRegion}`} />
-                <MiniStat label="Weight" value={`${weightKg || "0"} kg`} />
-                <MiniStat label="Category" value={category || "GENERAL"} />
-                <MiniStat label="Receiver" value={receiverName || "To be filled"} />
+                <MiniStat label="Route" value={`${originRegion} to ${destinationRegion}`} />
+                <MiniStat label="Weight" value={`${isCarryFlow ? capacityKg || "0" : weightKg || "0"} kg`} />
+                <MiniStat label={isCarryFlow ? "Date" : "Category"} value={isCarryFlow ? departAt || "To be filled" : category || "GENERAL"} />
+                <MiniStat label={isCarryFlow ? "Mode" : "Receiver"} value={isCarryFlow ? mode || "To be filled" : receiverName || "To be filled"} />
               </div>
             </Card>
           )}
@@ -104,55 +121,40 @@ export default function LoginPage() {
           <Card>
             <CardHeader>
               <CardTitle>Continue with email</CardTitle>
-              <CardDescription>
-                Good for diaspora users who prefer email over phone OTP.
-              </CardDescription>
+              <CardDescription>Good for diaspora users who prefer email over phone OTP.</CardDescription>
             </CardHeader>
-            <EmailForm onSubmit={async (email) => {
-              const supabase = createClient();
-              const { error } = await supabase.auth.signInWithOtp({ email });
-              if (error) throw error;
-              await redirectToVerify("email", email);
-            }} />
+            <EmailForm
+              onSubmit={async (email) => {
+                const supabase = createClient();
+                const { error } = await supabase.auth.signInWithOtp({ email });
+                if (error) throw error;
+                await redirectToVerify("email", email);
+              }}
+            />
           </Card>
 
           <Card>
             <CardHeader>
               <CardTitle>Continue with phone</CardTitle>
-              <CardDescription>
-                Still available, but no longer the first wall.
-              </CardDescription>
+              <CardDescription>Still available, but no longer the first wall.</CardDescription>
             </CardHeader>
-            <PhoneForm onSubmit={async (phone) => {
-              const supabase = createClient();
-              const { error } = await supabase.auth.signInWithOtp({ phone });
-              if (error) throw error;
-              await redirectToVerify("phone", phone);
-            }} />
+            <PhoneForm
+              onSubmit={async (phone) => {
+                const supabase = createClient();
+                const { error } = await supabase.auth.signInWithOtp({ phone });
+                if (error) throw error;
+                await redirectToVerify("phone", phone);
+              }}
+            />
           </Card>
         </section>
 
         <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
           <Card className="border-dashed">
             <CardHeader>
-              <CardTitle>Why this flow</CardTitle>
-              <CardDescription>
-                The code now defers auth until after the user sees route context and supply.
-              </CardDescription>
-            </CardHeader>
-            <div className="space-y-3 px-6 pb-6 text-sm text-foreground">
-              <Point text="Telegram is primary when available." />
-              <Point text="Email is the lightest non-Telegram option." />
-              <Point text="Phone remains supported, but only after the booking context is visible." />
-            </div>
-          </Card>
-
-          <Card>
-            <CardHeader>
               <CardTitle>Next step</CardTitle>
               <CardDescription>
-                After auth, you land on the booking form with the route and item details already
-                prefilled.
+                After auth, you continue with the route and item details already filled.
               </CardDescription>
             </CardHeader>
             <div className="px-6 pb-6">
@@ -160,7 +162,7 @@ export default function LoginPage() {
                 type="button"
                 variant="outline"
                 className="w-full"
-                onClick={() => router.push("/send")}
+                onClick={() => router.push(isCarryFlow ? "/carry" : "/send")}
               >
                 Back to preview
               </Button>
@@ -180,8 +182,8 @@ function EmailForm({ onSubmit }: { onSubmit: (email: string) => Promise<void> })
   return (
     <form
       className="space-y-4 px-6 pb-6"
-      onSubmit={async (e) => {
-        e.preventDefault();
+      onSubmit={async (event) => {
+        event.preventDefault();
         setError(null);
         if (!isValidEmail(email)) {
           setError("Enter a valid email address.");
@@ -206,11 +208,11 @@ function EmailForm({ onSubmit }: { onSubmit: (email: string) => Promise<void> })
           autoComplete="email"
           placeholder="name@example.com"
           value={email}
-          onChange={(e) => setEmail(e.target.value.trim())}
+          onChange={(event) => setEmail(event.target.value.trim())}
           required
         />
       </div>
-      {error && <p className="text-sm text-danger font-medium">{error}</p>}
+      {error && <p className="text-sm font-medium text-danger">{error}</p>}
       <Button type="submit" className="w-full" disabled={loading}>
         {loading ? "Sending..." : "Send email code"}
       </Button>
@@ -226,8 +228,8 @@ function PhoneForm({ onSubmit }: { onSubmit: (phone: string) => Promise<void> })
   return (
     <form
       className="space-y-4 px-6 pb-6"
-      onSubmit={async (e) => {
-        e.preventDefault();
+      onSubmit={async (event) => {
+        event.preventDefault();
         setError(null);
         if (!isValidPhone(phone)) {
           setError("Please enter a valid phone number in international format.");
@@ -252,11 +254,11 @@ function PhoneForm({ onSubmit }: { onSubmit: (phone: string) => Promise<void> })
           autoComplete="tel"
           placeholder="+2519XXXXXXXX"
           value={phone}
-          onChange={(e) => setPhone(e.target.value.trim())}
+          onChange={(event) => setPhone(event.target.value.trim())}
           required
         />
       </div>
-      {error && <p className="text-sm text-danger font-medium">{error}</p>}
+      {error && <p className="text-sm font-medium text-danger">{error}</p>}
       <Button type="submit" className="w-full" disabled={loading}>
         {loading ? "Sending..." : "Send phone code"}
       </Button>
@@ -269,17 +271,6 @@ function MiniStat({ label, value }: { label: string; value: string }) {
     <div className="rounded-[var(--radius)] border border-border bg-white px-4 py-3">
       <p className="text-xs uppercase tracking-wide text-muted">{label}</p>
       <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
-    </div>
-  );
-}
-
-function Point({ text }: { text: string }) {
-  return (
-    <div className="flex items-start gap-3">
-      <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-navy text-[10px] font-bold text-white">
-        •
-      </span>
-      <span>{text}</span>
     </div>
   );
 }

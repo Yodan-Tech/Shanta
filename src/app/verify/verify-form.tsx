@@ -36,6 +36,9 @@ export function VerifyForm({
       "description",
       "receiverName",
       "receiverPhone",
+      "departAt",
+      "capacityKg",
+      "mode",
     ]) {
       const value = searchParams.get(key);
       if (value) params.set(key, value);

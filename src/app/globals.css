@@ -35,9 +35,9 @@
   --color-danger: #d64545;
   --color-ring: #11234a;
 
-  /* Fonts (CSS variables set in layout.tsx via next/font) */
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-ethiopic: var(--font-ethiopic), var(--font-inter), sans-serif;
+  /* Font stacks must be local so production builds never depend on Google Fonts. */
+  --font-sans: "Segoe UI", "Aptos", "Noto Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-ethiopic: "Noto Sans Ethiopic", "Nyala", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
 
   --radius: 0.625rem;
 }
@@ -46,5 +46,5 @@ body {
   background: var(--color-surface);
   color: var(--color-foreground);
   font-family:
-    var(--font-inter), var(--font-ethiopic), ui-sans-serif, system-ui, sans-serif;
+    var(--font-sans), var(--font-ethiopic);
 }

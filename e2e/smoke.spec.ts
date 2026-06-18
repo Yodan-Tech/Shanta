@@ -10,8 +10,8 @@ test.describe("Health + public API", () => {
   test("GET /api/v1/health returns 200 with database ok", async ({ request }) => {
     const res = await request.get("/api/v1/health");
     expect(res.status()).toBe(200);
-    const body = (await res.json()) as { data?: { database?: string } };
-    expect(body.data?.database).toBe("ok");
+    const body = (await res.json()) as { checks?: { database?: string } };
+    expect(body.checks?.database).toBe("ok");
   });
 
   test("POST /api/v1/cron/* without secret returns 403", async ({ request }) => {
@@ -45,13 +45,17 @@ test.describe("Public pages", () => {
   test("landing page loads with two action buttons", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveTitle(/Shanta/i);
-    // Two primary action buttons
     const sendBtn = page.getByRole("link", { name: /send a package/i });
-    const travelBtn = page.getByRole("link", { name: /traveling with space/i });
+    const carryBtn = page.getByRole("link", { name: /carry a package/i });
     await expect(sendBtn).toBeVisible();
-    await expect(travelBtn).toBeVisible();
-    // Hub login link in footer
-    await expect(page.getByRole("link", { name: /hub login/i })).toBeVisible();
+    await expect(carryBtn).toBeVisible();
+  });
+
+  test("/send and /carry are public intent screens", async ({ page }) => {
+    await page.goto("/send");
+    await expect(page.getByRole("button", { name: /continue to sign in/i })).toBeVisible();
+    await page.goto("/carry");
+    await expect(page.getByRole("button", { name: /continue to publish trip/i })).toBeVisible();
   });
 
   test("unauthenticated /dashboard redirects to /login", async ({ page }) => {

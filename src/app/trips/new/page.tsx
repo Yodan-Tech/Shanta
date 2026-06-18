@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,10 +11,12 @@ import { Logo } from "@/components/logo";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 
 const ROUTES = [
-  { id: "addis-dawa", from: "Addis Ababa", fromRegion: "AA", to: "Dire Dawa", toRegion: "DD" },
-  { id: "addis-hawassa", from: "Addis Ababa", fromRegion: "AA", to: "Hawassa", toRegion: "SNNPR" },
-  { id: "addis-bahirdar", from: "Addis Ababa", fromRegion: "AA", to: "Bahir Dar", toRegion: "Amhara" },
-  { id: "addis-adama", from: "Addis Ababa", fromRegion: "AA", to: "Adama", toRegion: "Oromia" },
+  { id: "addis-dubai", from: "Addis Ababa", to: "Dubai" },
+  { id: "dubai-addis", from: "Dubai", to: "Addis Ababa" },
+  { id: "addis-dawa", from: "Addis Ababa", to: "Dire Dawa" },
+  { id: "addis-hawassa", from: "Addis Ababa", to: "Hawassa" },
+  { id: "addis-bahirdar", from: "Addis Ababa", to: "Bahir Dar" },
+  { id: "addis-adama", from: "Addis Ababa", to: "Adama" },
 ];
 
 const MODES = [
@@ -27,11 +29,17 @@ const MODES = [
 export default function CreateTripPage() {
   const t = useTranslations("trips");
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const draftRoute = ROUTES.find(
+    (route) =>
+      route.from === searchParams.get("originRegion") &&
+      route.to === searchParams.get("destinationRegion"),
+  );
   const [formData, setFormData] = useState({
-    route: "",
-    mode: "ROAD",
-    departure: "",
-    capacity: "",
+    route: draftRoute?.id ?? "",
+    mode: searchParams.get("mode") ?? "ROAD",
+    departure: searchParams.get("departAt") ?? "",
+    capacity: searchParams.get("capacityKg") ?? "",
     notes: "",
   });
   const [loading, setLoading] = useState(false);
@@ -58,8 +66,8 @@ export default function CreateTripPage() {
           legs: [
             {
               sequence: 1,
-              originRegion: selectedRoute.fromRegion,
-              destinationRegion: selectedRoute.toRegion,
+              originRegion: selectedRoute.from,
+              destinationRegion: selectedRoute.to,
               departAt: new Date(formData.departure).toISOString(),
               totalCapacityKg: parseInt(formData.capacity),
             },

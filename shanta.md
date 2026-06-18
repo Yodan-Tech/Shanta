@@ -103,8 +103,9 @@ Code reality on the public UX:
 | Expected product behavior | Current code behavior |
 |---|---|
 | Defer auth until after route/item exploration | Implemented via the public `/send` preview page |
-| Preserve sender intent through auth | Implemented via `next` plus route/item query parameters |
-| Route preview before sign-in | Implemented, but still separate from the final shipment creation form |
+| Defer auth until after traveler capacity entry | Implemented via the public `/carry` preview page |
+| Preserve sender/traveler intent through auth | Implemented via `next` plus route, item, receiver, date, capacity, and mode query parameters |
+| Route preview before sign-in | Implemented, but still separate from the final shipment and trip creation forms |
 
 ## 5. Tech Stack
 
@@ -180,6 +181,7 @@ Public and protected page surfaces in the app:
 |---|---|
 | `/` | Public landing page |
 | `/send` | Public preview-first sender flow |
+| `/carry` | Public preview-first traveler capacity flow |
 | `/login`, `/verify` | Public multi-channel auth flow with Telegram, email OTP, and phone OTP |
 | `/confirm` | Public receiver pickup confirmation page |
 | `/hub/login`, `/hub/verify` | Hub operator login / OTP flow |
@@ -551,7 +553,7 @@ These are the principles the codebase tries to express, even when the implementa
 | Bilingual | Locale cookie and EN/AM message bundles |
 | Low bandwidth | Photos are the primary evidence; no GPS tracking; SMS-first receiver confirmation |
 | Human language | Some screens use warm copy, but many remain hard-coded English |
-| Auth deferred | Implemented in `/send` and preserved through `/login` and `/verify` |
+| Auth deferred | Implemented in `/send` and `/carry`, then preserved through `/login` and `/verify` |
 
 What is actually visible on screen:
 

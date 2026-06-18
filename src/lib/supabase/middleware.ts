@@ -7,6 +7,8 @@ const PUBLIC_PATHS = [
   "/login",
   "/verify",
   "/auth",
+  "/send",
+  "/carry",
   "/confirm",      // Receiver delivery confirmation — no login (SMS token flow)
   "/hub/login",    // Hub operator login entry point
 ];
