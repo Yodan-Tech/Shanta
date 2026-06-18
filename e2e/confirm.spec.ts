@@ -15,10 +15,11 @@ test.describe("Receiver confirmation page (/confirm)", () => {
     page,
   }) => {
     await page.goto("/confirm?token=not-a-real-token");
-    // The confirm pickup button is rendered (may be disabled until photo is taken).
-    // We check it is present in the DOM — the camera open button signals the idle state.
+    // The confirm page renders an "Open Camera" button as the first CTA when
+    // a token is present. Confirm Pickup appears separately (disabled) until
+    // a photo is captured. Open Camera is the unique initial action button.
     await expect(
-      page.getByRole("button", { name: /confirm pickup|open camera/i }),
+      page.getByRole("button", { name: /open camera/i }),
     ).toBeVisible({ timeout: 10_000 });
   });
 
